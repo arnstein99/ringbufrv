@@ -1,0 +1,10 @@
+*.o
+ringcat
+tcpcat
+tcppipe
+tcpput
+tcpget
+tcppush
+tcppull
+tcprelay
+testring
