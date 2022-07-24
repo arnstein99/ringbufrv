@@ -3,6 +3,7 @@
 
 #include "ringbufr.h"
 #include <sys/select.h>
+#include <sys/uio.h>
 #include <algorithm>
 #include <cstring>
 #include <unistd.h>
@@ -15,20 +16,15 @@ using namespace std::chrono;
 #endif // VERBOSE
 
 copyfd_stats copyfd(
-    int readfd, int writefd,
-    size_t buffer_size, size_t push_pad, size_t pop_pad)
+    int readfd, int writefd, size_t buffer_size)
 {
     std::atomic<bool> cflag(true);
-    return copyfd_while(
-        readfd, writefd,
-        cflag, 0,
-        buffer_size, push_pad, pop_pad);
+    return copyfd_while(readfd, writefd, cflag, 0, buffer_size);
 }
 
 copyfd_stats copyfd_while(
     int readfd, int writefd,
-    const std::atomic<bool>& continue_flag, long check_usec,
-    size_t buffer_size, size_t push_pad, size_t pop_pad)
+    const std::atomic<bool>& continue_flag, long check_usec, size_t buffer_size)
 {
     int maxfd = std::max(readfd, writefd) + 1;
     fd_set read_set;
@@ -43,28 +39,32 @@ copyfd_stats copyfd_while(
     }
 
 
-    RingbufR<unsigned char> bufr(buffer_size, push_pad, pop_pad);
+    RingbufR<unsigned char> bufr(buffer_size);
 
     ssize_t bytes_read = 0;
     ssize_t bytes_write = 0;
     size_t bytes_copied = 0;
-    size_t read_available;
-    size_t write_available;
+    struct iovec readvec[2];
+    struct iovec writevec[2];
+    unsigned char* start0;
+    unsigned char* start1;
     bool l_continue = true;
     do
     {
         fd_set* p_read_set = nullptr;
         fd_set* p_write_set = nullptr;
 
-        unsigned char* read_start;
-        bufr.pushInquire(read_available, read_start);
+        size_t read_nseg = bufr.pushInquire(
+            readvec[0].iov_len, start0, readvec[1].iov_len, start1);
         bytes_read = 0;
-        if (read_available)
+        if (read_nseg)
         {
+            readvec[0].iov_base = start0;
+            readvec[1].iov_base = start1;
 #if (VERBOSE >= 3)
             auto before = system_clock::now();
 #endif // VERBOSE
-            bytes_read = read(readfd, read_start, read_available);
+            bytes_read = readv(readfd, readvec, read_nseg);
 #if (VERBOSE >= 3)
             auto after = system_clock::now();
             auto dur = duration_cast<milliseconds>(after - before).count();
@@ -99,14 +99,16 @@ copyfd_stats copyfd_while(
         }
 
         bytes_write = 0;
-        unsigned char* write_start;
-        bufr.popInquire(write_available, write_start);
-        if (write_available)
+        size_t write_nseg = bufr.popInquire(
+            writevec[0].iov_len, start0, writevec[1].iov_len, start1);
+        if (write_nseg)
         {
+            writevec[0].iov_base = start0;
+            writevec[1].iov_base = start1;
 #if (VERBOSE >= 3)
             auto before = system_clock::now();
 #endif // VERBOSE
-            bytes_write = write(writefd, write_start, write_available);
+            bytes_write = writev(writefd, writevec, write_nseg);
 #if (VERBOSE >= 3)
             auto after = system_clock::now();
             auto dur = duration_cast<milliseconds>(after - before).count();
@@ -157,7 +159,7 @@ copyfd_stats copyfd_while(
         }
 
 #if (VERBOSE >= 2)
-        if (read_available)
+        if (read_nseg)
         {
             std::cerr << std::setw(7) << std::left << "read" <<
                 std::setw(6) << std::right << bytes_read;
@@ -165,7 +167,7 @@ copyfd_stats copyfd_while(
         else
             std::cerr << std::setw(13) << " ";
         std::cerr << "    ";
-        if (write_available)
+        if (write_nseg)
         {
             std::cerr << std::setw(7) << std::left << "write" <<
                 std::setw(6) << std::right << bytes_write;
@@ -186,9 +188,6 @@ copyfd_stats copyfd_while(
     auto result = bufr.getState();
     stats.reads = result.pushes;
     stats.writes = result.pops;
-    stats.limit_reads = result.limit_pushes;
-    stats.limit_writes = result.limit_pops;
-    stats.internal_copies = result.internal_copies;
     return stats;
 }
 

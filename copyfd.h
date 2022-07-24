@@ -24,21 +24,16 @@ public:
 
 struct copyfd_stats
 {
-    size_t internal_copies;
     size_t reads;
     size_t writes;
-    size_t limit_reads;
-    size_t limit_writes;
     size_t bytes_copied;
 };
 
 copyfd_stats copyfd(
-    int readfd, int writefd,
-    size_t buffer_size, size_t push_pad=0, size_t pop_pad=0);
+    int readfd, int writefd, size_t buffer_size);
 
 copyfd_stats copyfd_while(
     int readfd, int writefd,
-    const std::atomic<bool>& continue_flag, long check_usec,
-    size_t buffer_size, size_t push_pad=0, size_t pop_pad=0);
+    const std::atomic<bool>& continue_flag, long check_usec, size_t buffer_size);
 
 #endif // __FD_COPY_H_

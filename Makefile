@@ -2,16 +2,6 @@
 ifneq ($(strip $(VERBOSE)),)
     CPPFLAGS += -DVERBOSE=$(VERBOSE)
 endif
-ifeq ($(strip $(PUSH_PAD)),)
-    CPPFLAGS += -DPUSH_PAD=2048
-else
-    CPPFLAGS += -DPUSH_PAD=$(PUSH_PAD)
-endif
-ifeq ($(strip $(POP_PAD)),)
-    CPPFLAGS += -DPOP_PAD=2048
-else
-    CPPFLAGS += -DPOP_PAD=$(POP_PAD)
-endif
 
 CCFLAGS += -std=c++2a -g -Wall
 LDLIBS += -lpthread
