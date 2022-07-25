@@ -92,7 +92,7 @@ int main (int argc, char* argv[])
             copyfd(socketFD[0], socketFD[1], 128*1024);
         std::cerr << stats.bytes_copied << " bytes, " <<
             stats.reads << " reads, " <<
-            stats.writes << " writes, " << std::endl;
+            stats.writes << " writes." << std::endl;
 #else
         copyfd(socketFD[0], socketFD[1], 128*1024);
 #endif

@@ -190,7 +190,7 @@ void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
             firstFD, secondFD, cflag, 500000, 128*1024);
         std::cerr << stats.bytes_copied << " bytes, " <<
             stats.reads << " reads, " <<
-            stats.writes << " writes, " << std::endl;
+            stats.writes << " writes." << std::endl;
 #else
         copyfd_while(
             firstFD, secondFD, cflag, 500000, 128*1024);

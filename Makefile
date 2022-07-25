@@ -1,9 +1,19 @@
 # Tuning
+ifeq ($(strip $(OPT)),)
+    CCFLAGS += -g
+    LDFLAGS += -g
+else
+    CCFLAGS += $(OPT)
+    LDFLAGS += $(OPT)
+endif
+ifneq ($(strip $(NDEBUG)),)
+    CPPFLAGS += -DNDEBUG=$(NDEBUG)
+endif
 ifneq ($(strip $(VERBOSE)),)
     CPPFLAGS += -DVERBOSE=$(VERBOSE)
 endif
 
-CCFLAGS += -std=c++2a -g -Wall
+CCFLAGS += -std=c++2a -Wall
 LDLIBS += -lpthread
 LINK.o = c++ $(LDFLAGS)
 COMPILE.cc = c++ -c $(CPPFLAGS) $(CCFLAGS)
