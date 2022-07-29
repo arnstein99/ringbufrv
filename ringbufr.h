@@ -7,23 +7,6 @@
 
 #include <cstddef>
 
-// Some exceptions for use with this class
-class RingbufRException
-{
-};
-class RingbufRArgumentException
-    : public RingbufRException
-{
-};
-class RingbufREmptyException
-    : public RingbufRException
-{
-};
-class RingbufRFullException
-    : public RingbufRException
-{
-};
-
 // Class RingbufR
 template<typename _T>
 class RingbufR

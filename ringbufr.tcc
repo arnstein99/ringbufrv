@@ -118,8 +118,6 @@ void RingbufR<_T>::push(size_t increment)
         increment -= limit1;
         _push_next = _ring_start + increment;
     }
-
-    // TODO: check for Buffer full exception.
 }
 
 template<typename _T>
@@ -184,8 +182,6 @@ void RingbufR<_T>::pop(size_t increment)
         _pop_next = _ring_start + increment;
     }
     _empty = (_pop_next == _push_next);
-
-    // TODO: test for buffer empty exception.
 }
 
 template<typename _T>

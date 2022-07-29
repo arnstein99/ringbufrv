@@ -41,26 +41,34 @@ copyfd_stats copyfd_while(
 
     RingbufR<unsigned char> bufr(buffer_size);
 
-    ssize_t bytes_read = 0;
-    ssize_t bytes_write = 0;
     size_t bytes_copied = 0;
     struct iovec readvec[2];
     struct iovec writevec[2];
-    unsigned char* start0;
-    unsigned char* start1;
+    size_t read_nseg, write_nseg;
+    unsigned char* read_start0;
+    unsigned char* read_start1;
+    unsigned char* write_start0;
+    unsigned char* write_start1;
+
     bool l_continue = true;
+    ssize_t bytes_read = 0;
+    ssize_t bytes_write = 0;
+    bool inquire_needed = true;
     do
     {
         fd_set* p_read_set = nullptr;
         fd_set* p_write_set = nullptr;
 
-        size_t read_nseg = bufr.pushInquire(
-            readvec[0].iov_len, start0, readvec[1].iov_len, start1);
+        if (inquire_needed) {
+            read_nseg = bufr.pushInquire(
+                readvec[0].iov_len, read_start0,
+                readvec[1].iov_len, read_start1);
+        }
         bytes_read = 0;
         if (read_nseg)
         {
-            readvec[0].iov_base = start0;
-            readvec[1].iov_base = start1;
+            readvec[0].iov_base = read_start0;
+            readvec[1].iov_base = read_start1;
 #if (VERBOSE >= 3)
             auto before = system_clock::now();
 #endif // VERBOSE
@@ -99,12 +107,16 @@ copyfd_stats copyfd_while(
         }
 
         bytes_write = 0;
-        size_t write_nseg = bufr.popInquire(
-            writevec[0].iov_len, start0, writevec[1].iov_len, start1);
+        if (inquire_needed)
+        {
+            write_nseg = bufr.popInquire(
+                writevec[0].iov_len, write_start0,
+                writevec[1].iov_len, write_start1);
+        }
         if (write_nseg)
         {
-            writevec[0].iov_base = start0;
-            writevec[1].iov_base = start1;
+            writevec[0].iov_base = write_start0;
+            writevec[1].iov_base = write_start1;
 #if (VERBOSE >= 3)
             auto before = system_clock::now();
 #endif // VERBOSE
@@ -179,6 +191,9 @@ copyfd_stats copyfd_while(
         std::cerr << (p_write_set ? "x" : "|");
         std::cerr << std::endl;
 #endif
+
+        // Only inquire if really necessary
+        inquire_needed =  ((bytes_read > 0) || (bytes_write > 0));
 
     } while ((bytes_read || bytes_write) && l_continue);
     // Includes negative values, meaning select() was just called.

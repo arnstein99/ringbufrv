@@ -198,15 +198,7 @@ static void Writer ()
             {
                 *start2++ = ++serial;
             }
-            try
-            {
-                rbuf.push(count);
-            }
-            catch (RingbufRFullException)
-            {
-                std::cout << "Write failure" << std::endl;
-                exit(1);
-            }
+            rbuf.push(count);
             last_write_value = serial;
             std::cout << "size is now " << rbuf.size() << std::endl;
         }
@@ -278,15 +270,7 @@ static void Reader ()
             {
                 tester(i, start2, serial);
             }
-            try
-            {
-                rbuf.pop(count);
-            }
-            catch (RingbufREmptyException)
-            {
-                std::cout << "Read failure " << std::endl;
-                exit(1);
-            }
+            rbuf.pop(count);
             last_read_value = serial;
             std::cout << "size is now " << rbuf.size() << std::endl;
         }
