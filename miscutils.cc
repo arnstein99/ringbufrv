@@ -31,7 +31,7 @@ int mstoi(const std::string& str)
     return retval;
 }
 
-std::vector<std::string> dstrtok(std::string instring, char delim)
+std::vector<std::string> mstrtok(std::string instring, char delim)
 {
     std::stringstream strm(instring);
     std::string entry;

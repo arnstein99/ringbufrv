@@ -18,6 +18,6 @@ void errorexit(const char* message);
 
 int mstoi(const std::string& str);
 
-std::vector<std::string> dstrtok(std::string instring, char delim);
+std::vector<std::string> mstrtok(std::string instring, char delim);
 
 #endif // __MISCUTILS_H_

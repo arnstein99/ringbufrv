@@ -120,7 +120,7 @@ static Uri process_args(int& argc, char**& argv)
 //     -pipe
 //     -listen <port>
 //     -listen <hostname>:<port>
-//     -connect <hostname> <port>
+//     -connect <hostname>:<port>
 {
     Uri uri;
 
@@ -139,7 +139,7 @@ static Uri process_args(int& argc, char**& argv)
         uri.listening = true;
         if (argc < 1) usage_error();
         const char* value = argv[0];
-        auto vec = dstrtok(value, ':');
+        auto vec = mstrtok(value, ':');
         switch (vec.size())
         {
         case 1:
@@ -164,11 +164,17 @@ static Uri process_args(int& argc, char**& argv)
         const char* value = argv[0];
         --argc;
         ++argv;
-        uri.hostname = value;
-        if (argc < 1) usage_error();
-        uri.port = mstoi(argv[0]);
-        --argc;
-        ++argv;
+        auto vec = mstrtok(value, ':');
+        switch (vec.size())
+        {
+        case 2:
+            uri.hostname = vec[0];
+            uri.port = mstoi(vec[1]);
+            break;
+        default:
+            usage_error();
+            break;
+        }
     }
     else
     {
@@ -185,6 +191,6 @@ void usage_error()
     std::cerr << "    -pipe" << std::endl;
     std::cerr << "    -listen <port_number>" << std::endl;
     std::cerr << "    -listen <hostname>:<port_number>" << std::endl;
-    std::cerr << "    -connect <hostname> <port_number>" << std::endl;
+    std::cerr << "    -connect <hostname>:<port_number>" << std::endl;
     exit (1);
 }

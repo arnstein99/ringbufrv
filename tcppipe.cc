@@ -146,7 +146,7 @@ static Uri process_args(int& argc, char**& argv)
         const char* value = argv[0];
         ++argv;
         --argc;
-        auto vec = dstrtok(value, ':');
+        auto vec = mstrtok(value, ':');
         switch (vec.size())
         {
         case 1:
@@ -165,14 +165,22 @@ static Uri process_args(int& argc, char**& argv)
     else if (strcmp(option, "-connect") == 0)
     {
         uri.listening = false;
-        if (argc < 2) usage_error();
+        if (argc < 1) usage_error();
         const char* value = argv[0];
         uri.hostname = value;
         --argc;
         ++argv;
-        uri.port = mstoi(argv[0]);
-        --argc;
-        ++argv;
+        auto vec = mstrtok(value, ':');
+        switch (vec.size())
+        {
+        case 2:
+            uri.hostname = vec[0];
+            uri.port = mstoi(vec[1]);
+            break;
+        default:
+            usage_error();
+            break;
+        }
     }
     else
     {
@@ -189,7 +197,7 @@ void usage_error()
     std::cerr << "    -stdio" << std::endl;
     std::cerr << "    -listen <port_number>" << std::endl;
     std::cerr << "    -listen <address>:<port_number>" << std::endl;
-    std::cerr << "    -connect <hostname> <port_number>" << std::endl;
+    std::cerr << "    -connect <hostname>:<port_number>" << std::endl;
     exit (1);
 }
 
