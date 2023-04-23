@@ -35,8 +35,8 @@ int main (int argc, char* argv[])
         // Special processing for double listen.
         // Wait for both URIs to accept.
         int temp[2];
-        temp[0] = socket_from_address("", uri[0].port);
-        temp[1] = socket_from_address("", uri[1].port);
+        temp[0] = socket_from_address("", uri[0].port, false);
+        temp[1] = socket_from_address("", uri[1].port, false);
         get_two_clients(temp, socketFD);
         close(temp[0]);
         close(temp[1]);
@@ -48,7 +48,7 @@ int main (int argc, char* argv[])
         {
             if (uri[index].listening)
             {
-                int temp = socket_from_address("", uri[index].port);
+                int temp = socket_from_address("", uri[index].port, false);
                 socketFD[index] = get_client(temp);
                 close(temp);
             }
@@ -70,7 +70,7 @@ int main (int argc, char* argv[])
                 {
                     socketFD[index] =
                         socket_from_address(
-                            uri[index].hostname, uri[index].port);
+                            uri[index].hostname, uri[index].port, true);
                 }
             }
         };
@@ -118,7 +118,8 @@ int main (int argc, char* argv[])
 static Uri process_args(int& argc, char**& argv)
 // Group can be one of
 //     -pipe
-//     -listen <port
+//     -listen <port>
+//     -listen <hostname>:<port>
 //     -connect <hostname> <port>
 {
     Uri uri;
@@ -138,9 +139,23 @@ static Uri process_args(int& argc, char**& argv)
         uri.listening = true;
         if (argc < 1) usage_error();
         const char* value = argv[0];
+        auto vec = dstrtok(value, ':');
+        switch (vec.size())
+        {
+        case 1:
+            uri.hostname = "";
+            uri.port = mstoi(vec[0]);
+            break;
+        case 2:
+            uri.hostname = vec[0];
+            uri.port = mstoi(vec[1]);
+            break;
+        default:
+            usage_error();
+            break;
+        }
         ++argv;
         --argc;
-        uri.port = mstoi(value);
     }
     else if (strcmp(option, "-connect") == 0)
     {
@@ -169,6 +184,7 @@ void usage_error()
         std::endl;
     std::cerr << "    -pipe" << std::endl;
     std::cerr << "    -listen <port_number>" << std::endl;
+    std::cerr << "    -listen <hostname>:<port_number>" << std::endl;
     std::cerr << "    -connect <hostname> <port_number>" << std::endl;
     exit (1);
 }

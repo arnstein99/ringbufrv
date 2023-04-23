@@ -9,7 +9,8 @@
 void set_flags(int fd, int flags);
 
 // Returns connected or bound socket.
-int socket_from_address(const std::string& hostname, int port_number);
+int socket_from_address(
+    const std::string& hostname, int port_number, bool do_connect);
 
 // Waits for a client
 int get_client(int listening_socket);

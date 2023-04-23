@@ -20,7 +20,8 @@ void set_flags(int fd, int flags)
     ZEROCHECK("fcntl", fcntl(fd, F_SETFL, oldflags));
 }
 
-int socket_from_address(const std::string& hostname, int port_number)
+int socket_from_address(
+    const std::string& hostname, int port_number, bool do_connect)
 {
     // Create socket
     int socketFD;
@@ -32,9 +33,17 @@ int socket_from_address(const std::string& hostname, int port_number)
     serveraddr.sin_family = AF_INET;
     serveraddr.sin_port = htons(port_number);
 
-    if (hostname == "")
+    if (do_connect == false)
     {
-        serveraddr.sin_addr.s_addr = htonl (INADDR_ANY);
+        if (hostname == "")
+        {
+            serveraddr.sin_addr.s_addr = htonl (INADDR_ANY);
+        }
+        else
+        {
+            const char* host_string = hostname.c_str();
+            serveraddr.sin_addr.s_addr = inet_addr(host_string);
+        }
         set_reuse(socketFD);
 
         // Bind to address but do not connect to anything

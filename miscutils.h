@@ -2,6 +2,7 @@
 #define __MISCUTILS_H_
 
 #include <string>
+#include <vector>
 
 void errorexit(const char* message);
 #define ZEROCHECK(message,retval) \
@@ -16,5 +17,7 @@ void errorexit(const char* message);
     } while (false)
 
 int mstoi(const std::string& str);
+
+std::vector<std::string> dstrtok(std::string instring, char delim);
 
 #endif // __MISCUTILS_H_

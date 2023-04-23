@@ -37,7 +37,9 @@ int main (int argc, char* argv[])
     {
         if (uri[index].listening)
         {
-            listener[index] = socket_from_address("", uri[index].port);
+            listener[index] =
+                socket_from_address(
+                    uri[index].hostname, uri[index].port, false);
         }
     };
     socket_if(0);
@@ -83,7 +85,7 @@ int main (int argc, char* argv[])
                     {
                         sock[index] =
                             socket_from_address(
-                                uri[index].hostname, uri[index].port);
+                                uri[index].hostname, uri[index].port, true);
                     }
                 }
             };
@@ -121,7 +123,8 @@ int main (int argc, char* argv[])
 static Uri process_args(int& argc, char**& argv)
 // Group can be one of
 //     -stdio
-//     -listen <port
+//     -listen <port>
+//     -listen <address>:<port>
 //     -connect <hostname> <port>
 {
     Uri uri;
@@ -143,7 +146,21 @@ static Uri process_args(int& argc, char**& argv)
         const char* value = argv[0];
         ++argv;
         --argc;
-        uri.port = mstoi(value);
+        auto vec = dstrtok(value, ':');
+        switch (vec.size())
+        {
+        case 1:
+            uri.hostname = "";
+            uri.port = mstoi(vec[0]);
+            break;
+        case 2:
+            uri.hostname = vec[0];
+            uri.port = mstoi(vec[1]);
+            break;
+        default:
+            usage_error();
+            break;
+        }
     }
     else if (strcmp(option, "-connect") == 0)
     {
@@ -171,6 +188,7 @@ void usage_error()
         std::endl;
     std::cerr << "    -stdio" << std::endl;
     std::cerr << "    -listen <port_number>" << std::endl;
+    std::cerr << "    -listen <address>:<port_number>" << std::endl;
     std::cerr << "    -connect <hostname> <port_number>" << std::endl;
     exit (1);
 }

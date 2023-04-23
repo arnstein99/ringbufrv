@@ -1,5 +1,6 @@
 #include "miscutils.h"
 #include <iostream>
+#include <sstream>
 #include <cstring>
 
 void errorexit(const char* message)
@@ -28,4 +29,16 @@ int mstoi(const std::string& str)
         exit(1);
     }
     return retval;
+}
+
+std::vector<std::string> dstrtok(std::string instring, char delim)
+{
+    std::stringstream strm(instring);
+    std::string entry;
+    std::vector<std::string> result;
+    while (std::getline(strm, entry, delim))
+    {
+        result.push_back(entry);
+    }
+    return result;
 }
