@@ -94,7 +94,9 @@ int main (int argc, char* argv[])
         }
 
         // Both sockets are complete, so copy now.
+#if (VERBOSE >= 2)
         std::cerr << "Begin copy loop" << std::endl;
+#endif
         continue_flag = true;
         static auto proc1 = [&sock, &continue_flag] ()
         {
@@ -113,7 +115,9 @@ int main (int argc, char* argv[])
         one.join();
         if (uri[1].port != -1) close(sock[1]);
         if (uri[0].port != -1) close(sock[0]);
+#if (VERBOSE >= 2)
         std::cerr << "End copy loop" << std::endl;
+#endif
 
     } while (repeat);
 
@@ -209,7 +213,7 @@ void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
     set_flags(secondFD, O_NONBLOCK);
     try
     {
-#if (VERBOSE >= 1)
+#if (VERBOSE >= 2)
         std::cerr << "starting copy, FD " << firstFD <<
             " to FD " << secondFD << std::endl;
         auto stats = copyfd_while(

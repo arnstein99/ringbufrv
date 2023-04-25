@@ -69,11 +69,11 @@ copyfd_stats copyfd_while(
         {
             readvec[0].iov_base = read_start0;
             readvec[1].iov_base = read_start1;
-#if (VERBOSE >= 3)
+#if (VERBOSE >= 4)
             auto before = system_clock::now();
 #endif // VERBOSE
             bytes_read = readv(readfd, readvec, read_nseg);
-#if (VERBOSE >= 3)
+#if (VERBOSE >= 4)
             auto after = system_clock::now();
             auto dur = duration_cast<milliseconds>(after - before).count();
             std::cerr << "read time " << dur << std::endl;
@@ -117,11 +117,11 @@ copyfd_stats copyfd_while(
         {
             writevec[0].iov_base = write_start0;
             writevec[1].iov_base = write_start1;
-#if (VERBOSE >= 3)
+#if (VERBOSE >= 4)
             auto before = system_clock::now();
 #endif // VERBOSE
             bytes_write = writev(writefd, writevec, write_nseg);
-#if (VERBOSE >= 3)
+#if (VERBOSE >= 4)
             auto after = system_clock::now();
             auto dur = duration_cast<milliseconds>(after - before).count();
             std::cerr << "write time " << dur << std::endl;
@@ -170,7 +170,7 @@ copyfd_stats copyfd_while(
                     maxfd, p_read_set, p_write_set, nullptr, tvp)));
         }
 
-#if (VERBOSE >= 2)
+#if (VERBOSE >= 3)
         if (read_nseg)
         {
             std::cerr << std::setw(7) << std::left << "read" <<

@@ -85,7 +85,7 @@ int main (int argc, char* argv[])
     // Copy!
     try
     {
-#if (VERBOSE >= 1)
+#if (VERBOSE >= 2)
         std::cerr << "starting copy, socket " << socketFD[0] <<
             " to socket " << socketFD[1] << std::endl;
         auto stats = 
