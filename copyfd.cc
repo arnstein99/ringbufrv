@@ -30,14 +30,6 @@ copyfd_stats copyfd_while(
     fd_set read_set;
     fd_set write_set;
     struct timeval tv;
-    struct timeval* tvp = nullptr;
-    if (check_usec != 0)
-    {
-        tv.tv_sec = 0;
-        tv.tv_usec = check_usec;
-        tvp = &tv;
-    }
-
 
     RingbufR<unsigned char> bufr(buffer_size);
 
@@ -162,6 +154,13 @@ copyfd_stats copyfd_while(
 
         if (p_read_set || p_write_set)
         {
+            struct timeval* tvp = nullptr;
+            if (check_usec != 0)
+            {
+                tv.tv_sec = 0;
+                tv.tv_usec = check_usec;
+                tvp = &tv;
+            }
             // Optimization
             l_continue = continue_flag;
             int select_return;

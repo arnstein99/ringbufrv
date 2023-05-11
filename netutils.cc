@@ -66,7 +66,7 @@ int socket_from_address(
         // Connect to server
         NEGCHECK ("connect", connect(
             socketFD, (struct sockaddr*)(&serveraddr), sizeof(serveraddr)));
-#if (VERBOSE == 1)
+#if (VERBOSE >= 1)
     std::cerr << "connected " << inet_ntoa(serveraddr.sin_addr) << std::endl;
 #endif
 #if (VERBOSE >= 2)
@@ -85,7 +85,7 @@ int get_client(int listening_socket)
     int client_socket;
     NEGCHECK("accept", (client_socket = accept(
         listening_socket, (struct sockaddr*)(&addr), &addrlen)));
-#if (VERBOSE == 1)
+#if (VERBOSE >= 1)
     std::cerr << "accepted " << inet_ntoa(addr.sin_addr) << std::endl;
 #endif
 #if (VERBOSE >= 2)
@@ -142,7 +142,7 @@ void get_two_clients(const int listening_socket[2], int client_socket[2])
                 }
                 else
                 {
-#if (VERBOSE == 1)
+#if (VERBOSE >= 1)
                     std::cerr << "accepted " << inet_ntoa(addr.sin_addr) <<
                         std::endl;
 #endif

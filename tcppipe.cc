@@ -121,6 +121,9 @@ int main (int argc, char* argv[])
 
     } while (repeat);
 
+#if (VERBOSE >= 1)
+    std::cerr << "Normal exit" << std::endl;
+#endif
     return 0;
 }
 
