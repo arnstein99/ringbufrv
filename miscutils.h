@@ -18,6 +18,8 @@ void errorexit(const char* message);
 
 int mstoi(const std::string& str);
 
+std::string my_time(void);
+
 bool represents_natural_number(const std::string& input);
 
 std::vector<std::string> mstrtok(std::string instring, char delim);

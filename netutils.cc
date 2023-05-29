@@ -53,7 +53,7 @@ int socket_from_address(
                 (struct sockaddr *)(&serveraddr),
                 (socklen_t)sizeof (serveraddr)));
 #if (VERBOSE >= 2)
-            std::cerr << "bound socket " << socketFD << std::endl;
+            std::cerr << my_time() << " bound socket " << socketFD << std::endl;
 #endif
     }
     else
@@ -67,10 +67,12 @@ int socket_from_address(
         NEGCHECK ("connect", connect(
             socketFD, (struct sockaddr*)(&serveraddr), sizeof(serveraddr)));
 #if (VERBOSE >= 1)
-    std::cerr << "connected " << inet_ntoa(serveraddr.sin_addr) << std::endl;
+    std::cerr << my_time() << " connected " <<
+        inet_ntoa(serveraddr.sin_addr) << std::endl;
 #endif
 #if (VERBOSE >= 2)
-            std::cerr << "connected socket " << socketFD << std::endl;
+            std::cerr << my_time() << " connected socket " << socketFD <<
+                std::endl;
 #endif
     }
 
@@ -86,11 +88,13 @@ int get_client(int listening_socket)
     NEGCHECK("accept", (client_socket = accept(
         listening_socket, (struct sockaddr*)(&addr), &addrlen)));
 #if (VERBOSE >= 1)
-    std::cerr << "accepted " << inet_ntoa(addr.sin_addr) << std::endl;
+    std::cerr << my_time() << " accepted " << inet_ntoa(addr.sin_addr) <<
+        std::endl;
 #endif
 #if (VERBOSE >= 2)
-    std::cerr << "connected socket " << listening_socket << std::endl;
-    std::cerr << "accepted socket " << client_socket <<
+    std::cerr << my_time() << " connected socket " << listening_socket <<
+        std::endl;
+    std::cerr << my_time() << " accepted socket " << client_socket <<
         " on listening socket " << listening_socket << std::endl;
 #endif
 
@@ -143,13 +147,13 @@ void get_two_clients(const int listening_socket[2], int client_socket[2])
                 else
                 {
 #if (VERBOSE >= 1)
-                    std::cerr << "accepted " << inet_ntoa(addr.sin_addr) <<
-                        std::endl;
+                    std::cerr << my_time() << " accepted " <<
+                        inet_ntoa(addr.sin_addr) << std::endl;
 #endif
 #if (VERBOSE >= 2)
-                    std::cerr << "accepted socket " << cl_socket[index] <<
-                        " on listening socket " << listening_socket[index] <<
-                        std::endl;
+                    std::cerr << my_time() << "accepted socket " <<
+                        cl_socket[index] << " on listening socket " <<
+                        listening_socket[index] << std::endl;
 #endif
                 }
             }
@@ -167,7 +171,7 @@ void get_two_clients(const int listening_socket[2], int client_socket[2])
 
     } while ((cl_socket[0] < 0) || (cl_socket[1] < 0));
 #if (VERBOSE >= 2)
-    std::cerr << "finished accepts" << std::endl;
+    std::cerr << my_time() << " finished accepts" << std::endl;
 #endif
     client_socket[0] = cl_socket[0];
     client_socket[1] = cl_socket[1];

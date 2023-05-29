@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <thread>
 #include <iostream>
 #include <cstring>
@@ -44,6 +45,13 @@ int main (int argc, char* argv[])
     };
     socket_if(0);
     socket_if(1);
+
+    // Prevent a crash
+    if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
+    {
+        perror("signal");
+        exit(1);
+    }
 
     int sock[2] = {0, 0};
     std::atomic<bool> continue_flag;
@@ -95,7 +103,7 @@ int main (int argc, char* argv[])
 
         // Both sockets are complete, so copy now.
 #if (VERBOSE >= 2)
-        std::cerr << "Begin copy loop" << std::endl;
+        std::cerr << my_time() << " Begin copy loop" << std::endl;
 #endif
         continue_flag = true;
         static auto proc1 = [&sock, &continue_flag] ()
@@ -116,13 +124,13 @@ int main (int argc, char* argv[])
         if (uri[1].port != -1) close(sock[1]);
         if (uri[0].port != -1) close(sock[0]);
 #if (VERBOSE >= 2)
-        std::cerr << "End copy loop" << std::endl;
+        std::cerr << my_time() << " End copy loop" << std::endl;
 #endif
 
     } while (repeat);
 
 #if (VERBOSE >= 1)
-    std::cerr << "Normal exit" << std::endl;
+    std::cerr << my_time() << " Normal exit" << std::endl;
 #endif
     return 0;
 }
@@ -217,7 +225,7 @@ void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
     try
     {
 #if (VERBOSE >= 2)
-        std::cerr << "starting copy, FD " << firstFD <<
+        std::cerr << my_time() << " starting copy, FD " << firstFD <<
             " to FD " << secondFD << std::endl;
         auto stats = copyfd_while(
             firstFD, secondFD, cflag, 500000, 128*1024);
