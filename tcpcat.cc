@@ -20,6 +20,10 @@ static void usage_error();
 
 int main (int argc, char* argv[])
 {
+    std::cerr << "tcpcat is broken because of changes to netutils." <<
+        std::endl;
+    exit(1);
+
     // Process inputs
     int argc_copy = argc - 1;
     char** argv_copy = argv;

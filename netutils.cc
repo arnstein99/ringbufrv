@@ -20,6 +20,13 @@ void set_flags(int fd, int flags)
     ZEROCHECK("fcntl", fcntl(fd, F_SETFL, oldflags));
 }
 
+void clear_flags(int fd, int flags)
+{
+    int oldflags = fcntl(fd, F_GETFL, 0);
+    oldflags &= (~flags);
+    ZEROCHECK("fcntl", fcntl(fd, F_SETFL, oldflags));
+}
+
 int socket_from_address(
     const std::string& hostname, int port_number, bool do_connect)
 {
@@ -64,8 +71,11 @@ int socket_from_address(
         (char *)&serveraddr.sin_addr.s_addr, server->h_length);
 
         // Connect to server
-        NEGCHECK ("connect", connect(
-            socketFD, (struct sockaddr*)(&serveraddr), sizeof(serveraddr)));
+        if (connect(
+            socketFD, (struct sockaddr*)(&serveraddr), sizeof(serveraddr)) < 0)
+        {
+            return -1;
+        }
 #if (VERBOSE >= 1)
     std::cerr << my_time() << " connected " <<
         inet_ntoa(serveraddr.sin_addr) << std::endl;
@@ -81,7 +91,6 @@ int socket_from_address(
 
 int get_client(int listening_socket)
 {
-    NEGCHECK("listen", listen (listening_socket, 1));
     struct sockaddr_in addr;
     socklen_t addrlen = (socklen_t)sizeof(addr);
     int client_socket;
@@ -107,21 +116,22 @@ void get_two_clients(const int listening_socket[2], int client_socket[2])
     set_flags(listening_socket[1], O_NONBLOCK);
 
     // Mark both sockets for listening
-    NEGCHECK("listen", listen (listening_socket[0], 1));
-    NEGCHECK("listen", listen (listening_socket[1], 1));
+    NEGCHECK("listen", listen(listening_socket[0], 1));
+    NEGCHECK("listen", listen(listening_socket[1], 1));
 
-    // Get both sockets accepted
     int maxfd =
         std::max(listening_socket[0], listening_socket[1]) + 1;
     fd_set read_set;
     int cl_socket[2] = {-1, -1};
+    bool finished = false;
     do
     {
         fd_set* p_read_set = nullptr;
         FD_ZERO(&read_set);
 
-        static auto no_wait_listen = [&] (int index)
+        static auto no_wait_listen = [&] (int index) -> bool
         {
+            bool success = false;
             if (cl_socket[index] < 0)
             {
                 struct sockaddr_in addr;
@@ -155,11 +165,17 @@ void get_two_clients(const int listening_socket[2], int client_socket[2])
                         cl_socket[index] << " on listening socket " <<
                         listening_socket[index] << std::endl;
 #endif
+                    success = true;
                 }
             }
+            return success;
         };
-        no_wait_listen(0);
-        no_wait_listen(1);
+
+        finished = no_wait_listen(0);
+        if (!finished)
+        {
+            finished = no_wait_listen(1);
+        }
 
         if (p_read_set)
         {
@@ -169,12 +185,14 @@ void get_two_clients(const int listening_socket[2], int client_socket[2])
                     maxfd, p_read_set, nullptr, nullptr, nullptr)));
         }
 
-    } while ((cl_socket[0] < 0) || (cl_socket[1] < 0));
+    } while (!finished);
 #if (VERBOSE >= 2)
     std::cerr << my_time() << " finished accepts" << std::endl;
 #endif
     client_socket[0] = cl_socket[0];
     client_socket[1] = cl_socket[1];
+    clear_flags(listening_socket[0], O_NONBLOCK);
+    clear_flags(listening_socket[1], O_NONBLOCK);
 }
 
 void set_reuse(int socket)
