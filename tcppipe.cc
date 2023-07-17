@@ -2,13 +2,17 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <thread>
+#include <mutex>
 #include <iostream>
 #include <cstring>
+#include <list>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include "copyfd.h"
 #include "miscutils.h"
 #include "netutils.h"
+// Debug code
+#include <cassert>
 
 struct Uri
 {
@@ -17,6 +21,16 @@ struct Uri
     std::string hostname;    // Not always defined
 };
 static Uri process_args(int& argc, char**& argv);
+
+static unsigned serial = 0;
+static unsigned last_serial = 0;
+struct ThreadRecord
+{
+    unsigned serial;
+    std::thread id;
+    bool running;
+};
+static void cleanup(std::list<ThreadRecord*>& records);
 
 // For passing by value instead of by reference
 struct Int2
@@ -37,14 +51,20 @@ public:
           int& operator[] (size_t index)       { return val[index]; }
     const int& operator[] (size_t index) const { return val[index]; }
 
+    // A bit of a hack
+    int* reference() { return val; }
+
 private:
     int val[2];
 };
 
+static void handle_clients(Int2 sck, const Uri* ur);
 static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag);
 static void usage_error();
 
-int main (int argc, char* argv[])
+std::mutex mtx;
+
+int main(int argc, char* argv[])
 {
     // Process user inputs
     int argc_copy = argc - 1;
@@ -55,19 +75,25 @@ int main (int argc, char* argv[])
     uri[1] = process_args(argc_copy, argv_copy);
     if (argc_copy != 0) usage_error();
 
-    // Get the listening sockets ready (if any)
     int listener[2] = {-1, -1};
-    static auto socket_if = [&listener, &uri] (int index)
+    // Special processing for double listen
+    bool no_block = (uri[0].listening && uri[1].listening);
+    auto prepar_if = [&no_block, &listener, &uri] (int index)
     {
         if (uri[index].listening)
         {
             listener[index] =
                 socket_from_address(
                     uri[index].hostname, uri[index].port, false);
+            if (no_block) set_flags(listener[index], O_NONBLOCK);
+            NEGCHECK("listen", listen(listener[index], 10));
+            // Debug code
+            std::cerr << "listen(" << listener[index] << ")" <<
+                std::endl;
         }
     };
-    socket_if(0);
-    socket_if(1);
+    prepar_if(0);
+    prepar_if(1);
 
     // Prevent a crash
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
@@ -76,122 +102,111 @@ int main (int argc, char* argv[])
         exit(1);
     }
 
-    bool repeat = uri[0].listening || uri[1].listening;
-    std::thread last_client;
+    bool repeat = (uri[0].listening || uri[1].listening);
+    std::list<ThreadRecord*> threads;
+    std::thread* last_thread;
 
     // Loop over clients
     do
     {
-        int sock[2] = {0, 0};
-        Int2 sock2;
-
-        static auto listen_if = [&uri, &sock, &listener] (int index)
-        {
-            if (uri[index].listening)
-            {
-                NEGCHECK("listen", listen(listener[index], 1));
-                sock[index] = get_client(listener[index]);
-            }
-        };
-
+#if (VERBOSE >= 2)
+        std::cerr << my_time() << " Begin copy loop" << std::endl;
+#endif
+        int accepted_sock[2];
         // Special processing for double listen
         if (uri[0].listening && uri[1].listening)
         {
-            // wait for one of the URIs to accept
-            get_two_clients(listener, sock);
-            // Programming note: one of the sock's is accepted. Both are
-            // listening.
+            // wait for both clients to accept
+            get_two_clients(listener, accepted_sock);
         }
         else
         {
             // Wait for client to listening socket, if any.
-            listen_if(0);
-            listen_if(1);
+            auto accept_if =
+                    [&uri, &listener, &accepted_sock] (int index)
+            {
+                if (uri[index].listening)
+                {
+                    accepted_sock[index] = get_client(listener[index]);
+                }
+            };
+            // Debug code
+            std::cerr << "waiting on accept(s) ..." << std::flush;
+            accept_if(0);
+            accept_if(1);
+            std::cerr << std::endl;
         }
 
-        sock2 = sock;
-        static auto client = [] (int listnr[2], Int2 sck, const Uri* ur)
-        {
-            std::atomic<bool> continue_flag = true;
-
-            // Special processing for double listen
-            if (ur[0].listening && ur[1].listening)
+        auto* record = new ThreadRecord;
+        record->serial = ++serial;
+        last_serial = record->serial;
+        record->running = true;
+        // Debug code
+        std::cerr << "create " << record->serial << 
+            " -----------------------------" << std::endl;
+        auto responder =
+            [record, accepted_sock, uri]()
             {
-                // Recall that both ports are listening, one is accepted.
-                for (size_t index = 0 ; index < 2 ; ++index)
+                int final_sock[2] = {-1, -1};
+                // Debug code
+                std::cerr << "run " << record->serial << 
+                    " " << std::this_thread::get_id() <<
+                    " -----------------------------" << std::endl;
+                std::cerr << "in responder lambda with accepted_sock=[" <<
+                    accepted_sock[0] << "," << accepted_sock[1] << "]" <<
+                    std::endl;
+                auto connect_if =
+                        [&uri, &accepted_sock, &final_sock] (int index)
                 {
-                    if (sck[index] == -1)
+                    if (uri[index].listening)
                     {
-                        sck[index] = get_client(listnr[index]);
-                        break;
+                        final_sock[index] = accepted_sock[index];
                     }
-                }
-            }
-            else
-            {
-                auto connect_if = [ur, &sck] (int index)
-                {
-                    if (!ur[index].listening)
+                    else
                     {
-                        if (ur[index].port != -1)
+                        if (uri[index].port > 1)
                         {
-                            sck[index] =
+                            final_sock[index] =
                                 socket_from_address(
-                                    ur[index].hostname, ur[index].port, true);
+                                    uri[index].hostname, uri[index].port, true);
+                            if (final_sock[index] == -1)
+                            {
+                                errorexit("ERROR: connect to listener");
+                            }
                         }
                     }
                 };
-                // Connect client socket and/or stdio socket, if any.
                 connect_if(0);
-                if (sck[0] == -1)
-                {
-                    if (ur[1].port != -1) close(sck[1]);
-                    std::cerr << "connect: " << strerror(errno) << std::endl;
-                    return;
-                }
                 connect_if(1);
-                if (sck[1] == -1)
-                {
-                    if (ur[0].port != -1) close(sck[0]);
-                    std::cerr << "connect: " << strerror(errno) << std::endl;
-                    return;
+                // Debug code
+                std::cerr << my_time() << " Calling handle_clients() " <<
+                    final_sock[0] << " <--> " << final_sock[1] << std::endl;
+                handle_clients(final_sock, uri);
+                // Debug code
+                std::cerr << "mutex 1 ..." << std::flush;
+                {   auto lock2 = std::lock_guard(mtx);
+                    std::cerr << std::endl;
+                    record->running = false;
                 }
-            }
-#if (VERBOSE >= 2)
-            std::cerr << my_time() << " Begin copy loop" << std::endl;
-#endif
-
-            auto proc1 = [ur, &sck, &continue_flag] ()
-            {
-                if (ur[0].port == -1) sck[0] = 0;
-                if (ur[1].port == -1) sck[1] = 1;
-                copy(sck[0], sck[1], continue_flag);
-                continue_flag = false;
+                // Debug code
+                std::cerr << "De-run " << record->serial << 
+                    " " << std::this_thread::get_id() <<
+                    " -----------------------------" << std::endl;
             };
-            std::thread one(proc1);
-            auto proc2 = [ur, &sck, &continue_flag] ()
-            {
-                if (ur[0].port == -1) sck[0] = 1;
-                if (ur[1].port == -1) sck[1] = 0;
-                copy(sck[1], sck[0], continue_flag);
-                continue_flag = false;
-            };
-            std::thread two(proc2);
-
-            two.join();
-            one.join();
-
-            if (ur[1].port != -1) close(sck[1]);
-            if (ur[0].port != -1) close(sck[0]);
-        };
-        last_client = std::thread(client, listener, sock2, uri);
-        if (repeat) last_client.detach();
+        record->id = std::thread(responder);
+        last_thread = &record->id;
+        // Debug code
+        std::cerr << "mutex 2" << std::flush;
+        {   auto lock1 = std::lock_guard(mtx);
+            std::cerr << std::endl;
+            cleanup(threads);
+            threads.push_back(record);
+       }
 #if (VERBOSE >= 2)
         std::cerr << my_time() << " End copy loop" << std::endl;
 #endif
-
     } while (repeat);
-    if (!repeat) last_client.join();
+    (*last_thread).join();
 
 #if (VERBOSE >= 1)
     std::cerr << my_time() << " Normal exit" << std::endl;
@@ -280,23 +295,98 @@ void usage_error()
     exit (1);
 }
 
+void cleanup(std::list<ThreadRecord*>& records)
+{
+    // Debug code
+    std::cerr << "Enter cleanup with " << records.size() << " records" <<
+        std::endl;
+    for (auto iter = records.begin() ; iter != records.end() ; )
+    {
+        auto rec = *iter;
+        if (rec->running)
+        {
+            ++iter;
+        }
+        else
+        {
+            std::cerr << "clean one " << rec->serial <<
+                " -----------------------------" << std::endl;
+            assert(rec->id.joinable());
+            rec->id.join();
+            // Debug code
+            std::cerr << "mutex 3 ..." << std::flush;
+            std::cerr << "clean two " << rec->serial <<
+                " -----------------------------" << std::endl;
+            delete rec;
+            iter = records.erase(iter);
+        }
+    }
+}
+
+void handle_clients(Int2 sck, const Uri* ur)
+{
+#if (VERBOSE >= 2)
+    std::cerr << my_time() << " Begin copy loop " << sck[0] << " <--> " <<
+        sck[1] << std::endl;
+#endif
+    std::atomic<bool> continue_flag = true;
+
+    auto proc1 = [&ur, &sck, &continue_flag] ()
+    {
+        if (ur[0].port == -1) sck[0] = 0;
+        if (ur[1].port == -1) sck[1] = 1;
+        copy(sck[0], sck[1], continue_flag);
+        continue_flag = false;
+    };
+    std::thread one(proc1);
+    auto proc2 = [&ur, &sck, &continue_flag] ()
+    {
+        if (ur[0].port == -1) sck[0] = 1;
+        if (ur[1].port == -1) sck[1] = 0;
+        copy(sck[1], sck[0], continue_flag);
+        continue_flag = false;
+    };
+    std::thread two(proc2);
+
+    // Debug code
+    std::cerr << "sub-join 1" << std::endl;
+    two.join();
+    std::cerr << "sub-join 2" << std::endl;
+    one.join();
+    std::cerr << "sub-join 3" << std::endl;
+
+    for (size_t index = 0 ; index < 2 ; ++index)
+    {
+#if (VERBOSE >= 1)
+        std::cerr << my_time() << " closing socket " << sck[index] <<
+            std::endl;
+#endif
+        if (sck[index] > 1)
+            close(sck[index]);
+    }
+    // Debug code
+    std::cerr << "Leaving handle_clients()" << std::endl;
+}
+
 void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
 {
     set_flags(firstFD , O_NONBLOCK);
     set_flags(secondFD, O_NONBLOCK);
+    // Debug code
+    std::cerr << "no-block on " << firstFD << ", " << secondFD << std::endl;
     try
     {
 #if (VERBOSE >= 2)
         std::cerr << my_time() << " starting copy, FD " << firstFD <<
             " to FD " << secondFD << std::endl;
         auto stats = copyfd_while(
-            firstFD, secondFD, cflag, 500000, 16*1024);
+            firstFD, secondFD, cflag, 500000, 4*1024);
         std::cerr << stats.bytes_copied << " bytes, " <<
             stats.reads << " reads, " <<
             stats.writes << " writes." << std::endl;
 #else
         copyfd_while(
-            firstFD, secondFD, cflag, 500000, 16*1024);
+            firstFD, secondFD, cflag, 500000, 4*1024);
 #endif
     }
     catch (const ReadException& r)

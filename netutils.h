@@ -14,10 +14,10 @@ void clear_flags(int fd, int flags);
 int socket_from_address(
     const std::string& hostname, int port_number, bool do_connect);
 
-// Waits for a client
+// Waits for a client to accept
 int get_client(int listening_socket);
 
-// Waits for one of two clients.
+// Waits for two clients to accept
 void get_two_clients(const int listening_socket[2], int client_socket[2]);
 
 // SO_REUSEADDR and SO_REUSEPORT
