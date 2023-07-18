@@ -2,17 +2,13 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <thread>
-#include <mutex>
 #include <iostream>
 #include <cstring>
-#include <list>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include "copyfd.h"
 #include "miscutils.h"
 #include "netutils.h"
-// Debug code
-#include <cassert>
 
 struct Uri
 {
@@ -21,16 +17,6 @@ struct Uri
     std::string hostname;    // Not always defined
 };
 static Uri process_args(int& argc, char**& argv);
-
-static unsigned serial = 0;
-static unsigned last_serial = 0;
-struct ThreadRecord
-{
-    unsigned serial;
-    std::thread id;
-    bool running;
-};
-static void cleanup(std::list<ThreadRecord*>& records);
 
 // For passing by value instead of by reference
 struct Int2
@@ -87,9 +73,6 @@ int main(int argc, char* argv[])
                     uri[index].hostname, uri[index].port, false);
             if (no_block) set_flags(listener[index], O_NONBLOCK);
             NEGCHECK("listen", listen(listener[index], 10));
-            // Debug code
-            std::cerr << "listen(" << listener[index] << ")" <<
-                std::endl;
         }
     };
     prepar_if(0);
@@ -103,8 +86,7 @@ int main(int argc, char* argv[])
     }
 
     bool repeat = (uri[0].listening || uri[1].listening);
-    std::list<ThreadRecord*> threads;
-    std::thread* last_thread;
+    std::thread last_thread;
 
     // Loop over clients
     do
@@ -130,31 +112,14 @@ int main(int argc, char* argv[])
                     accepted_sock[index] = get_client(listener[index]);
                 }
             };
-            // Debug code
-            std::cerr << "waiting on accept(s) ..." << std::flush;
             accept_if(0);
             accept_if(1);
-            std::cerr << std::endl;
         }
 
-        auto* record = new ThreadRecord;
-        record->serial = ++serial;
-        last_serial = record->serial;
-        record->running = true;
-        // Debug code
-        std::cerr << "create " << record->serial << 
-            " -----------------------------" << std::endl;
         auto responder =
-            [record, accepted_sock, uri]()
+            [accepted_sock, uri]()
             {
                 int final_sock[2] = {-1, -1};
-                // Debug code
-                std::cerr << "run " << record->serial << 
-                    " " << std::this_thread::get_id() <<
-                    " -----------------------------" << std::endl;
-                std::cerr << "in responder lambda with accepted_sock=[" <<
-                    accepted_sock[0] << "," << accepted_sock[1] << "]" <<
-                    std::endl;
                 auto connect_if =
                         [&uri, &accepted_sock, &final_sock] (int index)
                 {
@@ -178,35 +143,15 @@ int main(int argc, char* argv[])
                 };
                 connect_if(0);
                 connect_if(1);
-                // Debug code
-                std::cerr << my_time() << " Calling handle_clients() " <<
-                    final_sock[0] << " <--> " << final_sock[1] << std::endl;
                 handle_clients(final_sock, uri);
-                // Debug code
-                std::cerr << "mutex 1 ..." << std::flush;
-                {   auto lock2 = std::lock_guard(mtx);
-                    std::cerr << std::endl;
-                    record->running = false;
-                }
-                // Debug code
-                std::cerr << "De-run " << record->serial << 
-                    " " << std::this_thread::get_id() <<
-                    " -----------------------------" << std::endl;
             };
-        record->id = std::thread(responder);
-        last_thread = &record->id;
-        // Debug code
-        std::cerr << "mutex 2" << std::flush;
-        {   auto lock1 = std::lock_guard(mtx);
-            std::cerr << std::endl;
-            cleanup(threads);
-            threads.push_back(record);
-       }
+        last_thread = std::thread(responder);
+        if (repeat) last_thread.detach();
 #if (VERBOSE >= 2)
         std::cerr << my_time() << " End copy loop" << std::endl;
 #endif
     } while (repeat);
-    (*last_thread).join();
+    last_thread.join();
 
 #if (VERBOSE >= 1)
     std::cerr << my_time() << " Normal exit" << std::endl;
@@ -295,34 +240,6 @@ void usage_error()
     exit (1);
 }
 
-void cleanup(std::list<ThreadRecord*>& records)
-{
-    // Debug code
-    std::cerr << "Enter cleanup with " << records.size() << " records" <<
-        std::endl;
-    for (auto iter = records.begin() ; iter != records.end() ; )
-    {
-        auto rec = *iter;
-        if (rec->running)
-        {
-            ++iter;
-        }
-        else
-        {
-            std::cerr << "clean one " << rec->serial <<
-                " -----------------------------" << std::endl;
-            assert(rec->id.joinable());
-            rec->id.join();
-            // Debug code
-            std::cerr << "mutex 3 ..." << std::flush;
-            std::cerr << "clean two " << rec->serial <<
-                " -----------------------------" << std::endl;
-            delete rec;
-            iter = records.erase(iter);
-        }
-    }
-}
-
 void handle_clients(Int2 sck, const Uri* ur)
 {
 #if (VERBOSE >= 2)
@@ -348,12 +265,8 @@ void handle_clients(Int2 sck, const Uri* ur)
     };
     std::thread two(proc2);
 
-    // Debug code
-    std::cerr << "sub-join 1" << std::endl;
     two.join();
-    std::cerr << "sub-join 2" << std::endl;
     one.join();
-    std::cerr << "sub-join 3" << std::endl;
 
     for (size_t index = 0 ; index < 2 ; ++index)
     {
@@ -364,16 +277,12 @@ void handle_clients(Int2 sck, const Uri* ur)
         if (sck[index] > 1)
             close(sck[index]);
     }
-    // Debug code
-    std::cerr << "Leaving handle_clients()" << std::endl;
 }
 
 void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
 {
     set_flags(firstFD , O_NONBLOCK);
     set_flags(secondFD, O_NONBLOCK);
-    // Debug code
-    std::cerr << "no-block on " << firstFD << ", " << secondFD << std::endl;
     try
     {
 #if (VERBOSE >= 2)
@@ -391,12 +300,16 @@ void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
     }
     catch (const ReadException& r)
     {
+#if (VERBOSE >= 1)
         std::cerr << "Read failure after " << r.byte_count << " bytes: " <<
             strerror(r.errn) << std::endl;
+#endif
     }
     catch (const WriteException& w)
     {
+#if (VERBOSE >= 1)
         std::cerr << "Write failure after " << w.byte_count << " bytes: " <<
             strerror(w.errn) << std::endl;
+#endif
     }
 }

@@ -12,8 +12,6 @@ using namespace std::chrono_literals;
 #if (VERBOSE >= 1)
 #include <iostream>
 #endif
-// Debug code
-#include <iostream>
 
 void set_flags(int fd, int flags)
 {
@@ -98,9 +96,6 @@ int get_client(int listening_socket)
     int client_socket;
     NEGCHECK("accept", (client_socket = accept(
         listening_socket, (struct sockaddr*)(&addr), &addrlen)));
-    // Debug code
-    std::cerr << "accept(" << listening_socket << ") -> " << client_socket <<
-        std::endl;
 #if (VERBOSE >= 1)
     std::cerr << my_time() << " accepted " << inet_ntoa(addr.sin_addr) <<
         std::endl;
@@ -117,8 +112,6 @@ int get_client(int listening_socket)
 
 void get_two_clients(const int listening_socket[2], int client_socket[2])
 {
-    std::cerr << "entering get_two_clients()" << std::endl;
-
     int maxfd =
         std::max(listening_socket[0], listening_socket[1]) + 1;
     fd_set read_set;
@@ -130,8 +123,6 @@ void get_two_clients(const int listening_socket[2], int client_socket[2])
 
         auto no_wait_listen = [&] (int index)
         {
-            // Debug code
-            std::cerr << "entering no_wait_listen()" << std::endl;
             if (cl_socket[index] < 0)
             {
                 struct sockaddr_in addr;
@@ -156,9 +147,6 @@ void get_two_clients(const int listening_socket[2], int client_socket[2])
                 }
                 else
                 {
-                    // Debug code
-                    std::cerr << "accept(" << listening_socket[index] <<
-                        ") -> " << cl_socket[index] << std::endl;
 #if (VERBOSE >= 1)
                     std::cerr << my_time() << " accepted " <<
                         inet_ntoa(addr.sin_addr) << std::endl;
@@ -186,8 +174,6 @@ void get_two_clients(const int listening_socket[2], int client_socket[2])
 #endif
     client_socket[0] = cl_socket[0];
     client_socket[1] = cl_socket[1];
-    // Debug code
-    std::cerr << "leaving get_two_clients()" << std::endl;
 }
 
 void set_reuse(int socket)
