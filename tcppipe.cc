@@ -3,12 +3,20 @@
 #include <signal.h>
 #include <thread>
 #include <iostream>
+#include <semaphore>
+#include <chrono>
+using namespace std::chrono_literals;
 #include <cstring>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include "copyfd.h"
 #include "miscutils.h"
 #include "netutils.h"
+
+// Tuning (compile time)
+constexpr std::ptrdiff_t default_max_clients{10};
+constexpr std::ptrdiff_t max_max_clients{25};
+constexpr std::chrono::duration retry_delay{1s};
 
 struct Uri
 {
@@ -44,11 +52,29 @@ private:
     int val[2];
 };
 
-static void handle_clients(Int2 sck, const Uri* ur);
+// For releasing a semaphore, for sure.
+template<typename std::ptrdiff_t COUNT>
+class SemaphoreToken
+{
+public:
+    SemaphoreToken(std::counting_semaphore<COUNT>& other_sem) :
+        sem(other_sem) { }
+
+    SemaphoreToken() = delete;
+    SemaphoreToken(const SemaphoreToken&) = delete;
+    SemaphoreToken& operator=(const SemaphoreToken&) = delete;
+    SemaphoreToken(SemaphoreToken&&) = delete;
+    SemaphoreToken& operator=(SemaphoreToken&&) = delete;
+    ~SemaphoreToken() { sem.release(); }
+
+private:
+    std::counting_semaphore<COUNT>& sem;
+};
+
+static void handle_clients(
+        std::counting_semaphore<max_max_clients>& sem, Int2 sck, const Uri* ur);
 static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag);
 static void usage_error();
-
-std::mutex mtx;
 
 int main(int argc, char* argv[])
 {
@@ -88,6 +114,11 @@ int main(int argc, char* argv[])
     bool repeat = (uri[0].listening || uri[1].listening);
     std::thread last_thread;
 
+    // TODO: include this in user interface
+    constexpr std::ptrdiff_t max_clients{default_max_clients};
+
+    std::counting_semaphore<max_max_clients> limiter{max_clients};
+
     // Loop over clients
     do
     {
@@ -95,6 +126,10 @@ int main(int argc, char* argv[])
         std::cerr << my_time() << " Begin copy loop" << std::endl;
 #endif
         int accepted_sock[2];
+        // Debug code
+        std::cerr << "acquire semaphore ..." << std::flush;
+        limiter.acquire();
+        std::cerr << std::endl;
         // Special processing for double listen
         if (uri[0].listening && uri[1].listening)
         {
@@ -117,7 +152,7 @@ int main(int argc, char* argv[])
         }
 
         auto responder =
-            [accepted_sock, uri]()
+            [&limiter, accepted_sock, uri]()
             {
                 int final_sock[2] = {-1, -1};
                 auto connect_if =
@@ -131,19 +166,26 @@ int main(int argc, char* argv[])
                     {
                         if (uri[index].port > 1)
                         {
+                            unsigned retry_count = 0;
+                            connect_if_retry:
                             final_sock[index] =
                                 socket_from_address(
                                     uri[index].hostname, uri[index].port, true);
                             if (final_sock[index] == -1)
                             {
-                                errorexit("ERROR: connect to listener");
+                                std::cerr <<
+                                    "WARNING " << ++retry_count <<
+                                    ": connect to listener: " <<
+                                    strerror(errno) << std::endl;
+                                std::this_thread::sleep_for(retry_delay);
+                                goto connect_if_retry;
                             }
                         }
                     }
                 };
                 connect_if(0);
                 connect_if(1);
-                handle_clients(final_sock, uri);
+                handle_clients(limiter, final_sock, uri);
             };
         last_thread = std::thread(responder);
         if (repeat) last_thread.detach();
@@ -240,8 +282,10 @@ void usage_error()
     exit (1);
 }
 
-void handle_clients(Int2 sck, const Uri* ur)
+void handle_clients
+    (std::counting_semaphore<max_max_clients>& limiter, Int2 sck, const Uri* ur)
 {
+    SemaphoreToken<max_max_clients> token(limiter);
 #if (VERBOSE >= 2)
     std::cerr << my_time() << " Begin copy loop " << sck[0] << " <--> " <<
         sck[1] << std::endl;

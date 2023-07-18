@@ -32,7 +32,7 @@ int socket_from_address(
 {
     // Create socket
     int socketFD;
-    NEGCHECK("socket", (socketFD = socket (PF_INET, SOCK_STREAM, IPPROTO_TCP)));
+    NEGCHECK("socket", (socketFD = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)));
 
     // Process host name
     struct sockaddr_in serveraddr;
@@ -74,6 +74,7 @@ int socket_from_address(
         if (connect(
             socketFD, (struct sockaddr*)(&serveraddr), sizeof(serveraddr)) < 0)
         {
+            close(socketFD);
             return -1;
         }
 #if (VERBOSE >= 1)
