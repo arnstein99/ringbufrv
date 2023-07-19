@@ -15,7 +15,7 @@ using namespace std::chrono_literals;
 
 // Tuning (compile time)
 constexpr std::ptrdiff_t default_max_clients{10};
-constexpr std::ptrdiff_t max_max_clients{25};
+constexpr std::ptrdiff_t max_max_clients{256};
 constexpr std::chrono::duration retry_delay{1s};
 
 struct Uri
@@ -24,6 +24,7 @@ struct Uri
     int port;                // -1 means stdin or stdout
     std::string hostname;    // Not always defined
 };
+static std::ptrdiff_t  process_options(int& argc, char**& argv);
 static Uri process_args(int& argc, char**& argv);
 
 // For passing by value instead of by reference
@@ -79,9 +80,14 @@ static void usage_error();
 int main(int argc, char* argv[])
 {
     // Process user inputs
+
     int argc_copy = argc - 1;
     char** argv_copy = argv;
     ++argv_copy;
+
+    std::ptrdiff_t max_clients;
+    max_clients = process_options(argc_copy, argv_copy);
+
     Uri uri[2];
     uri[0] = process_args(argc_copy, argv_copy);
     uri[1] = process_args(argc_copy, argv_copy);
@@ -113,12 +119,7 @@ int main(int argc, char* argv[])
 
     bool repeat = (uri[0].listening || uri[1].listening);
     std::thread last_thread;
-
-    // TODO: include this in user interface
-    constexpr std::ptrdiff_t max_clients{default_max_clients};
-
     std::counting_semaphore<max_max_clients> limiter{max_clients};
-
     // Loop over clients
     do
     {
@@ -126,10 +127,7 @@ int main(int argc, char* argv[])
         std::cerr << my_time() << " Begin copy loop" << std::endl;
 #endif
         int accepted_sock[2];
-        // Debug code
-        std::cerr << "acquire semaphore ..." << std::flush;
         limiter.acquire();
-        std::cerr << std::endl;
         // Special processing for double listen
         if (uri[0].listening && uri[1].listening)
         {
@@ -199,6 +197,35 @@ int main(int argc, char* argv[])
     std::cerr << my_time() << " Normal exit" << std::endl;
 #endif
     return 0;
+}
+
+static std::ptrdiff_t  process_options(int& argc, char**& argv)
+// Currently, the only option processed is
+//     -limit <nnnn>
+{
+    std::ptrdiff_t limit = default_max_clients;
+
+    if (argc < 1) usage_error();
+    const char* option = argv[0];
+
+    if (strcmp(option, "-limit") == 0)
+    {
+        if (argc < 1) usage_error();
+        const char* value = argv[1];
+        limit = mstoi(value);
+        argv += 2;
+        argc -=2;
+    }
+    if (limit > max_max_clients)
+    {
+         std::cerr << "Sorry, \"-limit\" cannot be greater than " <<
+             max_max_clients << "." << std::endl;
+        std::cerr <<
+            "Recompile program with a larger \"max_max_clients\" "
+                "to correct." << std::endl;
+        exit(1);
+    }
+    return limit;
 }
 
 static Uri process_args(int& argc, char**& argv)
@@ -272,7 +299,8 @@ static Uri process_args(int& argc, char**& argv)
 
 void usage_error()
 {
-    std::cerr << "Usage: tcppipe <first_spec> <second_spec>" << std::endl;
+    std::cerr << "Usage: tcppipe [-limit nnnn] <first_spec> <second_spec>" <<
+        std::endl;
     std::cerr << "Each of <first_spec> and <second_spec> can be one of" <<
         std::endl;
     std::cerr << "    -stdio" << std::endl;
