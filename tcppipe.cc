@@ -72,8 +72,7 @@ private:
     std::counting_semaphore<COUNT>& sem;
 };
 
-static void handle_clients(
-        std::counting_semaphore<max_max_clients>& sem, Int2 sck, const Uri* ur);
+static void handle_clients(Int2 sck, const Uri* ur);
 static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag);
 static void usage_error();
 
@@ -127,7 +126,6 @@ int main(int argc, char* argv[])
         std::cerr << my_time() << " Begin copy loop" << std::endl;
 #endif
         int accepted_sock[2];
-        limiter.acquire();
         // Special processing for double listen
         if (uri[0].listening && uri[1].listening)
         {
@@ -153,37 +151,51 @@ int main(int argc, char* argv[])
             [&limiter, accepted_sock, uri]()
             {
                 int final_sock[2] = {-1, -1};
-                auto connect_if =
-                        [&uri, &accepted_sock, &final_sock] (int index)
-                {
-                    if (uri[index].listening)
+                unsigned retry_count = 0;
+                connect_if_retry:
+                limiter.acquire();
+                {   SemaphoreToken<max_max_clients> token(limiter);
+                    auto connect_if =
+                            [&uri, &accepted_sock, &retry_count,
+                            &final_sock] (int index) -> bool
                     {
-                        final_sock[index] = accepted_sock[index];
-                    }
-                    else
-                    {
-                        if (uri[index].port > 1)
+                        if (uri[index].listening)
                         {
-                            unsigned retry_count = 0;
-                            connect_if_retry:
-                            final_sock[index] =
-                                socket_from_address(
-                                    uri[index].hostname, uri[index].port, true);
-                            if (final_sock[index] == -1)
+                            final_sock[index] = accepted_sock[index];
+                        }
+                        else
+                        {
+                            if (uri[index].port > 1)
                             {
-                                std::cerr <<
-                                    "WARNING " << ++retry_count <<
-                                    ": connect to listener: " <<
-                                    strerror(errno) << std::endl;
-                                std::this_thread::sleep_for(retry_delay);
-                                goto connect_if_retry;
+                                final_sock[index] =
+                                    socket_from_address(
+                                        uri[index].hostname, uri[index].port, true);
+                                if (final_sock[index] == -1)
+                                {
+                                    if (errno == ETIMEDOUT)
+                                    {
+                                        std::cerr << my_time() <<
+                                            " WARNING " << ++retry_count <<
+                                            ": connect to listener: " <<
+                                            strerror(errno) << std::endl;
+                                        return false;
+                                    }
+                                    else
+                                    {
+                                        errorexit("connect to remote");
+                                    }
+                                }
                             }
                         }
+                        return true;
+                    };
+                    if (!(connect_if(0) && connect_if(1)))
+                    {
+                        std::this_thread::sleep_for(retry_delay);
+                        goto connect_if_retry;
                     }
-                };
-                connect_if(0);
-                connect_if(1);
-                handle_clients(limiter, final_sock, uri);
+                }
+                handle_clients(final_sock, uri);
             };
         last_thread = std::thread(responder);
         if (repeat) last_thread.detach();
@@ -311,9 +323,8 @@ void usage_error()
 }
 
 void handle_clients
-    (std::counting_semaphore<max_max_clients>& limiter, Int2 sck, const Uri* ur)
+    (Int2 sck, const Uri* ur)
 {
-    SemaphoreToken<max_max_clients> token(limiter);
 #if (VERBOSE >= 2)
     std::cerr << my_time() << " Begin copy loop " << sck[0] << " <--> " <<
         sck[1] << std::endl;
@@ -373,15 +384,15 @@ void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
     catch (const ReadException& r)
     {
 #if (VERBOSE >= 1)
-        std::cerr << "Read failure after " << r.byte_count << " bytes: " <<
-            strerror(r.errn) << std::endl;
+        std::cerr << my_time() << "Read failure after " << r.byte_count <<
+            " bytes: " << strerror(r.errn) << std::endl;
 #endif
     }
     catch (const WriteException& w)
     {
 #if (VERBOSE >= 1)
-        std::cerr << "Write failure after " << w.byte_count << " bytes: " <<
-            strerror(w.errn) << std::endl;
+        std::cerr << my_time() << "Write failure after " << w.byte_count <<
+            " bytes: " << strerror(w.errn) << std::endl;
 #endif
     }
 }
