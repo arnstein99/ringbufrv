@@ -384,14 +384,14 @@ void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
     catch (const ReadException& r)
     {
 #if (VERBOSE >= 1)
-        std::cerr << my_time() << "Read failure after " << r.byte_count <<
+        std::cerr << my_time() << " Read failure after " << r.byte_count <<
             " bytes: " << strerror(r.errn) << std::endl;
 #endif
     }
     catch (const WriteException& w)
     {
 #if (VERBOSE >= 1)
-        std::cerr << my_time() << "Write failure after " << w.byte_count <<
+        std::cerr << my_time() << " Write failure after " << w.byte_count <<
             " bytes: " << strerror(w.errn) << std::endl;
 #endif
     }
