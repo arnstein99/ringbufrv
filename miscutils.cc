@@ -9,7 +9,7 @@ void errorexit(const char* message)
     exit(errno);
 }
 
-int mstoi(const std::string& str)
+int mstoi(const std::string& str, bool allow_zero)
 {
     int retval = 0;
     try
@@ -19,13 +19,13 @@ int mstoi(const std::string& str)
             std::out_of_range except(str);
             throw (except);
         }
-        if (!represents_natural_number(str))
+        if (!represents_counting(str))
         {
             std::invalid_argument except(str);
             throw (except);
         }
         retval = stoi(str);
-        if (retval <= 0) // redundant, a little.
+        if (!allow_zero && (retval < 0))
         {
             std::out_of_range except(str);
             throw (except);
@@ -63,7 +63,7 @@ std::string my_time(void)
     return std::string(buf);
 }
 
-bool represents_natural_number(const std::string& input)
+bool represents_counting(const std::string& input)
 {
     if (input.empty()) return false;
     std::string::const_iterator it = input.begin();

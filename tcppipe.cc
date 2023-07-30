@@ -5,6 +5,7 @@
 #include <iostream>
 #include <semaphore>
 #include <chrono>
+#include <limits>
 using namespace std::chrono_literals;
 #include <cstring>
 #include <sys/socket.h>
@@ -14,17 +15,27 @@ using namespace std::chrono_literals;
 #include "netutils.h"
 
 // Tuning (compile time)
-constexpr std::ptrdiff_t default_max_clients{10};
-constexpr std::ptrdiff_t max_max_clients{256};
+constexpr std::ptrdiff_t default_max_cip{10};
+constexpr std::ptrdiff_t default_max_clients{32};
+constexpr unsigned default_max_connecttime_s{300};
+constexpr std::ptrdiff_t semaphore_max_max{256};
 constexpr std::chrono::duration retry_delay{1s};
 
+struct Options
+{
+    std::ptrdiff_t max_cip;
+    std::ptrdiff_t max_clients;
+    unsigned max_iotime_s;
+    unsigned max_connecttime_s;
+};
 struct Uri
 {
     bool listening;
     int port;                // -1 means stdin or stdout
     std::string hostname;    // Not always defined
 };
-static std::ptrdiff_t  process_options(int& argc, char**& argv);
+
+static Options process_options(int& argc, char**& argv);
 static Uri process_args(int& argc, char**& argv);
 
 // For passing by value instead of by reference
@@ -72,7 +83,7 @@ private:
     std::counting_semaphore<COUNT>& sem;
 };
 
-static void handle_clients(Int2 sck, const Uri* ur);
+static void handle_clients(Int2 sck, const Uri* ur, const Options* opt);
 static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag);
 static void usage_error();
 
@@ -81,12 +92,8 @@ int main(int argc, char* argv[])
     // Process user inputs
 
     int argc_copy = argc - 1;
-    char** argv_copy = argv;
-    ++argv_copy;
-
-    std::ptrdiff_t max_clients;
-    max_clients = process_options(argc_copy, argv_copy);
-
+    char** argv_copy = argv + 1;
+    Options options = process_options(argc_copy, argv_copy);
     Uri uri[2];
     uri[0] = process_args(argc_copy, argv_copy);
     uri[1] = process_args(argc_copy, argv_copy);
@@ -118,7 +125,9 @@ int main(int argc, char* argv[])
 
     bool repeat = (uri[0].listening || uri[1].listening);
     std::thread last_thread;
-    std::counting_semaphore<max_max_clients> limiter{max_clients};
+    std::counting_semaphore<semaphore_max_max>
+        clients_limiter{options.max_clients};
+    std::counting_semaphore<semaphore_max_max> cip_limiter{options.max_cip};
     // Loop over clients
     do
     {
@@ -148,15 +157,18 @@ int main(int argc, char* argv[])
         }
 
         auto responder =
-            [&limiter, accepted_sock, uri]()
+            [&clients_limiter, &cip_limiter, accepted_sock, uri, options]()
             {
+                clients_limiter.acquire();
+                SemaphoreToken<semaphore_max_max>
+                    clients_token(clients_limiter);
                 int final_sock[2] = {-1, -1};
                 unsigned retry_count = 0;
                 connect_if_retry:
-                limiter.acquire();
-                {   SemaphoreToken<max_max_clients> token(limiter);
+                cip_limiter.acquire();
+                {   SemaphoreToken<semaphore_max_max> cip_token(cip_limiter);
                     auto connect_if =
-                            [&uri, &accepted_sock, &retry_count,
+                            [&uri, &options, &accepted_sock, &retry_count,
                             &final_sock] (int index) -> bool
                     {
                         if (uri[index].listening)
@@ -169,7 +181,8 @@ int main(int argc, char* argv[])
                             {
                                 final_sock[index] =
                                     socket_from_address(
-                                        uri[index].hostname, uri[index].port, true);
+                                        uri[index].hostname, uri[index].port,
+                                        true, options.max_connecttime_s);
                                 if (final_sock[index] == -1)
                                 {
                                     if (errno == ETIMEDOUT)
@@ -195,7 +208,7 @@ int main(int argc, char* argv[])
                         goto connect_if_retry;
                     }
                 }
-                handle_clients(final_sock, uri);
+                handle_clients(final_sock, uri, &options);
             };
         last_thread = std::thread(responder);
         if (repeat) last_thread.detach();
@@ -211,33 +224,68 @@ int main(int argc, char* argv[])
     return 0;
 }
 
-static std::ptrdiff_t  process_options(int& argc, char**& argv)
-// Currently, the only option processed is
-//     -limit <nnnn>
+static Options process_options(int& argc, char**& argv)
 {
-    std::ptrdiff_t limit = default_max_clients;
+    if (argc < 2) usage_error();
+    Options options;
+    options.max_cip = default_max_cip;
+    options.max_clients = default_max_clients;
+    options.max_iotime_s = std::numeric_limits<unsigned>::max();
+    options.max_connecttime_s = default_max_connecttime_s;
 
-    if (argc < 1) usage_error();
-    const char* option = argv[0];
-
-    if (strcmp(option, "-limit") == 0)
+    while (argc > 2)
     {
-        if (argc < 1) usage_error();
-        const char* value = argv[1];
-        limit = mstoi(value);
-        argv += 2;
-        argc -=2;
+        const char* option = argv[0];
+        if (strcmp(option, "-max_cip") == 0)
+        {
+            if (argc < 1) usage_error();
+            const char* value = argv[1];
+            options.max_cip = mstoi(value);
+            argv += 2;
+            argc -=2;
+            if (options.max_cip > semaphore_max_max)
+            {
+                 std::cerr << "Sorry, \"-max_cip\" cannot be greater than " <<
+                     semaphore_max_max << "." << std::endl;
+                std::cerr <<
+                    "Recompile program with a larger \"semaphore_max_max\" "
+                        "to correct." << std::endl;
+                exit(1);
+            }
+        }
+        else if (strcmp(option, "-max_clients") == 0)
+        {
+            if (argc < 1) usage_error();
+            const char* value = argv[1];
+            options.max_clients = mstoi(value);
+            argv += 2;
+            argc -=2;
+            if (options.max_clients > semaphore_max_max)
+            {
+                 std::cerr <<
+                     "Sorry, \"-options.max_clients\" cannot be greater than " <<
+                     semaphore_max_max << "." << std::endl;
+                std::cerr <<
+                    "Recompile program with a larger \"semaphore_max_max\" "
+                        "to correct." << std::endl;
+                exit(1);
+            }
+        }
+        else if (strcmp(option, "-max_iotime") == 0)
+        {
+            if (argc < 1) usage_error();
+            const char* value = argv[1];
+            options.max_iotime_s = mstoi(value, true);
+            options.max_connecttime_s = options.max_iotime_s;
+            argv += 2;
+            argc -=2;
+        }
+        else
+        {
+            break;
+        }
     }
-    if (limit > max_max_clients)
-    {
-         std::cerr << "Sorry, \"-limit\" cannot be greater than " <<
-             max_max_clients << "." << std::endl;
-        std::cerr <<
-            "Recompile program with a larger \"max_max_clients\" "
-                "to correct." << std::endl;
-        exit(1);
-    }
-    return limit;
+    return options;
 }
 
 static Uri process_args(int& argc, char**& argv)
@@ -311,8 +359,9 @@ static Uri process_args(int& argc, char**& argv)
 
 void usage_error()
 {
-    std::cerr << "Usage: tcppipe [-limit nnnn] <first_spec> <second_spec>" <<
-        std::endl;
+    std::cerr << "Usage: tcppipe [-max_clients nnnn] [-max_cip nnnn] "
+        "[-max_iotime nnnn] " << std::endl;
+    std::cerr << "    <first_spec> <second_spec>" << std::endl;
     std::cerr << "Each of <first_spec> and <second_spec> can be one of" <<
         std::endl;
     std::cerr << "    -stdio" << std::endl;
@@ -322,25 +371,29 @@ void usage_error()
     exit (1);
 }
 
-void handle_clients
-    (Int2 sck, const Uri* ur)
+void handle_clients(Int2 sck, const Uri* ur, const Options* opt)
 {
 #if (VERBOSE >= 2)
     std::cerr << my_time() << " Begin copy loop " << sck[0] << " <--> " <<
         sck[1] << std::endl;
 #endif
     std::atomic<bool> continue_flag = true;
+    std::counting_semaphore<2> copy_semaphore(2);
+    copy_semaphore.acquire();
+    copy_semaphore.acquire();
 
-    auto proc1 = [&ur, &sck, &continue_flag] ()
+    auto proc1 = [&ur, &sck, &continue_flag, &copy_semaphore] ()
     {
+        auto token = SemaphoreToken(copy_semaphore);
         if (ur[0].port == -1) sck[0] = 0;
         if (ur[1].port == -1) sck[1] = 1;
         copy(sck[0], sck[1], continue_flag);
         continue_flag = false;
     };
     std::thread one(proc1);
-    auto proc2 = [&ur, &sck, &continue_flag] ()
+    auto proc2 = [&ur, &sck, &continue_flag, &copy_semaphore] ()
     {
+        auto token = SemaphoreToken(copy_semaphore);
         if (ur[0].port == -1) sck[0] = 1;
         if (ur[1].port == -1) sck[1] = 0;
         copy(sck[1], sck[0], continue_flag);
@@ -348,8 +401,10 @@ void handle_clients
     };
     std::thread two(proc2);
 
-    two.join();
+    copy_semaphore.try_acquire_for(opt->max_iotime_s * 1s);
+    continue_flag = false;
     one.join();
+    two.join();
 
     for (size_t index = 0 ; index < 2 ; ++index)
     {
@@ -362,7 +417,7 @@ void handle_clients
     }
 }
 
-void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
+static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
 {
     set_flags(firstFD , O_NONBLOCK);
     set_flags(secondFD, O_NONBLOCK);
@@ -371,14 +426,12 @@ void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
 #if (VERBOSE >= 2)
         std::cerr << my_time() << " starting copy, FD " << firstFD <<
             " to FD " << secondFD << std::endl;
-        auto stats = copyfd_while(
-            firstFD, secondFD, cflag, 500000, 4*1024);
+        auto stats = copyfd_while(firstFD, secondFD, cflag, 500000, 4*1024);
         std::cerr << stats.bytes_copied << " bytes, " <<
             stats.reads << " reads, " <<
             stats.writes << " writes." << std::endl;
 #else
-        copyfd_while(
-            firstFD, secondFD, cflag, 500000, 4*1024);
+        copyfd_while(firstFD, secondFD, cflag, 500000, 4*1024);
 #endif
     }
     catch (const ReadException& r)

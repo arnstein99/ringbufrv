@@ -28,7 +28,8 @@ void clear_flags(int fd, int flags)
 }
 
 int socket_from_address(
-    const std::string& hostname, int port_number, bool do_connect)
+    const std::string& hostname, int port_number, bool do_connect,
+    unsigned max_connecttime_s)
 {
     // Create socket
     int socketFD;
@@ -66,13 +67,14 @@ int socket_from_address(
     else
     {
         struct hostent* server = gethostbyname(hostname.c_str());
-        if (server == NULL) errorexit("gethostbyname");
+        if (server == nullptr) errorexit("gethostbyname");
         bcopy((char *)server->h_addr,
         (char *)&serveraddr.sin_addr.s_addr, server->h_length);
 
         // Connect to server
         if (connect(
-            socketFD, (struct sockaddr*)(&serveraddr), sizeof(serveraddr)) < 0)
+            socketFD, (struct sockaddr*)(&serveraddr), sizeof(serveraddr),
+            max_connecttime_s) < 0)
         {
             close(socketFD);
             return -1;
@@ -186,4 +188,43 @@ void set_reuse(int socket)
     NEGCHECK("setsockopt",
         setsockopt(socket, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)));
 #endif
+}
+
+int connect(
+    int sockfd, const struct sockaddr *addr, socklen_t addrlen,
+    unsigned maxwait_s)
+{
+    set_flags(sockfd, O_NONBLOCK);
+    int retval = connect(sockfd, addr, addrlen);
+    if (retval < 0)
+    {
+        if (errno == EINPROGRESS)
+        {
+            fd_set set;
+            int maxfd = sockfd + 1;
+            FD_ZERO(&set);
+            FD_SET(sockfd, &set);
+            struct timeval tv;
+            tv.tv_sec = maxwait_s;
+            tv.tv_usec = 0;
+            retval = select(maxfd, nullptr, &set, nullptr, &tv);
+            switch (retval)
+            {
+            case 0:
+                // Timeout
+                retval = -1;
+                break;
+            case 1:
+                // Success
+                retval = 0;
+                break;
+            default:
+                std::cerr << "select returns " << retval <<
+                    ", 1 was expected." << std::endl;
+                retval = -1;
+                break;
+            }
+        }
+    }
+    return retval;
 }

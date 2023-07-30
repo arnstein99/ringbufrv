@@ -25,7 +25,7 @@ tcpcat: tcpcat.o copyfd.o miscutils.o netutils.o
 tcppipe: tcppipe.o copyfd.o miscutils.o netutils.o
 
 copyfd.o: ringbufr.h ringbufr.tcc
-testring.o: ringbufr.h ringbufr.tcc
+testring.o: miscutils.h ringbufr.h ringbufr.tcc
 tcpcat.o: copyfd.h miscutils.h netutils.h
 tcppipe.o: copyfd.h miscutils.h netutils.h
 netutils.o: netutils.h miscutils.h ringbufr.h

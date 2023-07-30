@@ -16,11 +16,11 @@ void errorexit(const char* message);
         errorexit(message); \
     } while (false)
 
-int mstoi(const std::string& str);
+int mstoi(const std::string& str, bool allow_zero=false);
 
 std::string my_time(void);
 
-bool represents_natural_number(const std::string& input);
+bool represents_counting(const std::string& input);
 
 std::vector<std::string> mstrtok(std::string instring, char delim);
 
