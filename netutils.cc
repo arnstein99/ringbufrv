@@ -219,8 +219,10 @@ int connect(
                 retval = 0;
                 break;
             default:
+#if (VERBOSE >= 1)
                 std::cerr << "select returns " << retval <<
                     ", 1 was expected." << std::endl;
+#endif
                 retval = -1;
                 break;
             }
