@@ -81,7 +81,7 @@ int socket_from_address(
         }
 #if (VERBOSE >= 1)
     std::cerr << my_time() << " connected " <<
-        inet_ntoa(serveraddr.sin_addr) << std::endl;
+        inet_ntoa(serveraddr.sin_addr) << ":" << socketFD << std::endl;
 #endif
 #if (VERBOSE >= 2)
             std::cerr << my_time() << " connected socket " << socketFD <<
@@ -101,7 +101,7 @@ int get_client(int listening_socket)
         listening_socket, (struct sockaddr*)(&addr), &addrlen)));
 #if (VERBOSE >= 1)
     std::cerr << my_time() << " accepted " << inet_ntoa(addr.sin_addr) <<
-        std::endl;
+        ":" << client_socket << std::endl;
 #endif
 #if (VERBOSE >= 2)
     std::cerr << my_time() << " accepted on socket " << listening_socket <<

@@ -19,7 +19,6 @@ constexpr std::ptrdiff_t default_max_cip{10};
 constexpr std::ptrdiff_t default_max_clients{32};
 constexpr unsigned default_max_connecttime_s{300};
 constexpr std::ptrdiff_t semaphore_max_max{256};
-constexpr std::chrono::duration retry_delay{1s};
 
 struct Options
 {
@@ -159,17 +158,13 @@ int main(int argc, char* argv[])
         auto responder =
             [&clients_limiter, &cip_limiter, accepted_sock, uri, options]()
             {
-                clients_limiter.acquire();
-                SemaphoreToken<semaphore_max_max>
-                    clients_token(clients_limiter);
+                auto clients_token = SemaphoreToken(clients_limiter);
                 int final_sock[2] = {-1, -1};
-                unsigned retry_count = 0;
-                connect_if_retry:
                 cip_limiter.acquire();
-                {   SemaphoreToken<semaphore_max_max> cip_token(cip_limiter);
+                {   auto cip_token = SemaphoreToken(cip_limiter);
                     auto connect_if =
-                            [&uri, &options, &accepted_sock, &retry_count,
-                            &final_sock] (int index) -> bool
+                            [&uri, &options, &accepted_sock, &final_sock]
+                            (int index) -> bool
                     {
                         if (uri[index].listening)
                         {
@@ -185,11 +180,11 @@ int main(int argc, char* argv[])
                                         true, options.max_connecttime_s);
                                 if (final_sock[index] == -1)
                                 {
-                                    if (errno == ETIMEDOUT)
+                                    if ((errno == ETIMEDOUT) ||
+                                        (errno == EINPROGRESS))
                                     {
                                         std::cerr << my_time() <<
-                                            " WARNING " << ++retry_count <<
-                                            ": connect to listener: " <<
+                                            " Note: connect to listener: " <<
                                             strerror(errno) << std::endl;
                                         return false;
                                     }
@@ -202,14 +197,22 @@ int main(int argc, char* argv[])
                         }
                         return true;
                     };
-                    if (!(connect_if(0) && connect_if(1)))
+                    if (connect_if(0) && connect_if(1))
                     {
-                        std::this_thread::sleep_for(retry_delay);
-                        goto connect_if_retry;
+                        handle_clients(final_sock, uri, &options);
+                    }
+#if (VERBOSE >= 1)
+                    std::cerr << my_time() << " closing " << final_sock[0] <<
+                        " " << final_sock[1] << std::endl;
+#endif
+                    for (int index = 0 ; index < 2 ; ++index)
+                    {
+                        if (final_sock[index] >= 2)
+                            close(final_sock[index]);
                     }
                 }
-                handle_clients(final_sock, uri, &options);
             };
+        clients_limiter.acquire();
         last_thread = std::thread(responder);
         if (repeat) last_thread.detach();
 #if (VERBOSE >= 2)
@@ -359,8 +362,11 @@ static Uri process_args(int& argc, char**& argv)
 
 void usage_error()
 {
-    std::cerr << "Usage: tcppipe [-max_clients nnnn] [-max_cip nnnn] "
-        "[-max_iotime nnnn] " << std::endl;
+    std::cerr << "Usage:" << std::endl;
+    std::cerr << "  tcppipe [-max_clients nnn(" << default_max_clients <<
+        ")] [-max_cip nnn(" << default_max_cip <<
+        ")] [-max_iotime nnn(lots)] " <<
+        std::endl;
     std::cerr << "    <first_spec> <second_spec>" << std::endl;
     std::cerr << "Each of <first_spec> and <second_spec> can be one of" <<
         std::endl;
@@ -379,9 +385,8 @@ void handle_clients(Int2 sck, const Uri* ur, const Options* opt)
 #endif
     std::atomic<bool> continue_flag = true;
     std::counting_semaphore<2> copy_semaphore(2);
-    copy_semaphore.acquire();
-    copy_semaphore.acquire();
 
+    copy_semaphore.acquire();
     auto proc1 = [&ur, &sck, &continue_flag, &copy_semaphore] ()
     {
         auto token = SemaphoreToken(copy_semaphore);
@@ -391,6 +396,8 @@ void handle_clients(Int2 sck, const Uri* ur, const Options* opt)
         continue_flag = false;
     };
     std::thread one(proc1);
+
+    copy_semaphore.acquire();
     auto proc2 = [&ur, &sck, &continue_flag, &copy_semaphore] ()
     {
         auto token = SemaphoreToken(copy_semaphore);
@@ -401,20 +408,18 @@ void handle_clients(Int2 sck, const Uri* ur, const Options* opt)
     };
     std::thread two(proc2);
 
+#if (VERBOSE >= 1)
+    int normal = copy_semaphore.try_acquire_for(opt->max_iotime_s * 1s);
+    if (!normal)
+    {
+        std::cerr << my_time() << " Note: client terminated" << std::endl;
+    }
+#else
     copy_semaphore.try_acquire_for(opt->max_iotime_s * 1s);
+#endif
     continue_flag = false;
     one.join();
     two.join();
-
-    for (size_t index = 0 ; index < 2 ; ++index)
-    {
-#if (VERBOSE >= 1)
-        std::cerr << my_time() << " closing socket " << sck[index] <<
-            std::endl;
-#endif
-        if (sck[index] > 1)
-            close(sck[index]);
-    }
 }
 
 static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
