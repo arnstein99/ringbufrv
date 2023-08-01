@@ -19,6 +19,7 @@ constexpr std::ptrdiff_t default_max_cip{10};
 constexpr std::ptrdiff_t default_max_clients{32};
 constexpr unsigned default_max_connecttime_s{300};
 constexpr std::ptrdiff_t semaphore_max_max{256};
+constexpr int listen_backlog{10};
 
 struct Options
 {
@@ -109,7 +110,7 @@ int main(int argc, char* argv[])
                 socket_from_address(
                     uri[index].hostname, uri[index].port, false);
             if (no_block) set_flags(listener[index], O_NONBLOCK);
-            NEGCHECK("listen", listen(listener[index], 10));
+            NEGCHECK("listen", listen(listener[index], listen_backlog));
         }
     };
     prepar_if(0);
@@ -130,6 +131,7 @@ int main(int argc, char* argv[])
     // Loop over clients
     do
     {
+        clients_limiter.acquire();
 #if (VERBOSE >= 2)
         std::cerr << my_time() << " Begin copy loop" << std::endl;
 #endif
@@ -143,16 +145,13 @@ int main(int argc, char* argv[])
         else
         {
             // Wait for client to listening socket, if any.
-            auto accept_if =
-                    [&uri, &listener, &accepted_sock] (int index)
+            for (size_t index = 0 ; index < 2 ; ++index)
             {
                 if (uri[index].listening)
                 {
                     accepted_sock[index] = get_client(listener[index]);
                 }
-            };
-            accept_if(0);
-            accept_if(1);
+            }
         }
 
         auto responder =
@@ -162,9 +161,8 @@ int main(int argc, char* argv[])
                 int final_sock[2] = {-1, -1};
                 cip_limiter.acquire();
                 {   auto cip_token = SemaphoreToken(cip_limiter);
-                    auto connect_if =
-                            [&uri, &options, &accepted_sock, &final_sock]
-                            (int index) -> bool
+                    bool success = true;
+                    for (size_t index = 0 ; index < 2 ; ++index)
                     {
                         if (uri[index].listening)
                         {
@@ -186,7 +184,8 @@ int main(int argc, char* argv[])
                                         std::cerr << my_time() <<
                                             " Note: connect to listener: " <<
                                             strerror(errno) << std::endl;
-                                        return false;
+                                        success = false;
+                                        break;
                                     }
                                     else
                                     {
@@ -195,9 +194,8 @@ int main(int argc, char* argv[])
                                 }
                             }
                         }
-                        return true;
-                    };
-                    if (connect_if(0) && connect_if(1))
+                    }
+                    if (success)
                     {
                         handle_clients(final_sock, uri, &options);
                     }
@@ -205,14 +203,13 @@ int main(int argc, char* argv[])
                     std::cerr << my_time() << " closing " << final_sock[0] <<
                         " " << final_sock[1] << std::endl;
 #endif
-                    for (int index = 0 ; index < 2 ; ++index)
+                    for (size_t index = 0 ; index < 2 ; ++index)
                     {
                         if (final_sock[index] >= 2)
                             close(final_sock[index]);
                     }
                 }
             };
-        clients_limiter.acquire();
         last_thread = std::thread(responder);
         if (repeat) last_thread.detach();
 #if (VERBOSE >= 2)
