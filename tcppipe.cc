@@ -13,6 +13,8 @@ using namespace std::chrono_literals;
 #include "copyfd.h"
 #include "miscutils.h"
 #include "netutils.h"
+#include "mcleaner.h"
+using namespace MCleaner;
 
 // Tuning (compile time)
 constexpr std::ptrdiff_t default_max_cip{10};
@@ -62,25 +64,6 @@ public:
 
 private:
     int val[2];
-};
-
-// For releasing a semaphore, for sure.
-template<typename std::ptrdiff_t COUNT>
-class SemaphoreToken
-{
-public:
-    SemaphoreToken(std::counting_semaphore<COUNT>& other_sem) :
-        sem(other_sem) { }
-
-    SemaphoreToken() = delete;
-    SemaphoreToken(const SemaphoreToken&) = delete;
-    SemaphoreToken& operator=(const SemaphoreToken&) = delete;
-    SemaphoreToken(SemaphoreToken&&) = delete;
-    SemaphoreToken& operator=(SemaphoreToken&&) = delete;
-    ~SemaphoreToken() { sem.release(); }
-
-private:
-    std::counting_semaphore<COUNT>& sem;
 };
 
 static void handle_clients(Int2 sck, const Uri* ur, const Options* opt);
@@ -157,11 +140,13 @@ int main(int argc, char* argv[])
         auto responder =
             [&clients_limiter, &cip_limiter, accepted_sock, uri, options]()
             {
-                auto clients_token = SemaphoreToken(clients_limiter);
-                int final_sock[2] = {-1, -1};
+                SemaphoreReleaser clientsToken(clients_limiter);
+                int final_sock[2]{-1, -1};
+                FileCloser closer0(final_sock[0]);
+                FileCloser closer1(final_sock[1]);
                 cip_limiter.acquire();
-                {   auto cip_token = SemaphoreToken(cip_limiter);
-                    bool success = true;
+                bool success = true;
+                {   SemaphoreReleaser cip_token(cip_limiter);
                     for (size_t index = 0 ; index < 2 ; ++index)
                     {
                         if (uri[index].listening)
@@ -195,20 +180,15 @@ int main(int argc, char* argv[])
                             }
                         }
                     }
-                    if (success)
-                    {
-                        handle_clients(final_sock, uri, &options);
-                    }
-#if (VERBOSE >= 1)
-                    std::cerr << my_time() << " closing " << final_sock[0] <<
-                        " " << final_sock[1] << std::endl;
-#endif
-                    for (size_t index = 0 ; index < 2 ; ++index)
-                    {
-                        if (final_sock[index] >= 2)
-                            close(final_sock[index]);
-                    }
                 }
+                if (success)
+                {
+                    handle_clients(final_sock, uri, &options);
+                }
+#if (VERBOSE >= 1)
+                std::cerr << my_time() << " closing " << final_sock[0] <<
+                    " " << final_sock[1] << std::endl;
+#endif
             };
         last_thread = std::thread(responder);
         if (repeat) last_thread.detach();
@@ -386,7 +366,7 @@ void handle_clients(Int2 sck, const Uri* ur, const Options* opt)
     copy_semaphore.acquire();
     auto proc1 = [&ur, &sck, &continue_flag, &copy_semaphore] ()
     {
-        auto token = SemaphoreToken(copy_semaphore);
+        SemaphoreReleaser token(copy_semaphore);
         if (ur[0].port == -1) sck[0] = 0;
         if (ur[1].port == -1) sck[1] = 1;
         copy(sck[0], sck[1], continue_flag);
@@ -397,7 +377,7 @@ void handle_clients(Int2 sck, const Uri* ur, const Options* opt)
     copy_semaphore.acquire();
     auto proc2 = [&ur, &sck, &continue_flag, &copy_semaphore] ()
     {
-        auto token = SemaphoreToken(copy_semaphore);
+        SemaphoreReleaser token(copy_semaphore);
         if (ur[0].port == -1) sck[0] = 1;
         if (ur[1].port == -1) sck[1] = 0;
         copy(sck[1], sck[0], continue_flag);
