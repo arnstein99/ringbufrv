@@ -4,22 +4,22 @@
 #include <atomic>
 
 // For read and write errors
-class IOException
+class CopyFDException
 {
 public:
-    IOException(int ern, size_t bc) : errn(ern), byte_count(bc) {}
+    CopyFDException(int ern, size_t bc) : errn(ern), byte_count(bc) {}
     int errn;
     size_t byte_count;
 };
-class ReadException : public IOException
+class CopyFDReadException : public CopyFDException
 {
 public:
-    ReadException(int ern, size_t bc) : IOException(ern, bc) {}
+    CopyFDReadException(int ern, size_t bc) : CopyFDException(ern, bc) {}
 };
-class WriteException : public IOException
+class CopyFDWriteException : public CopyFDException
 {
 public:
-    WriteException(int ern, size_t bc) : IOException(ern, bc) {}
+    CopyFDWriteException(int ern, size_t bc) : CopyFDException(ern, bc) {}
 };
 
 struct copyfd_stats

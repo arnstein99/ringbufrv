@@ -82,7 +82,7 @@ copyfd_stats copyfd_while(
                 else
                 {
                     // Some other error on input
-                    ReadException r(errno, bytes_copied);
+                    CopyFDReadException r(errno, bytes_copied);
                     throw(r);
                 }
             }
@@ -130,14 +130,14 @@ copyfd_stats copyfd_while(
                 else
                 {
                     // Some other error on write
-                    WriteException w(errno, bytes_copied);
+                    CopyFDWriteException w(errno, bytes_copied);
                     throw(w);
                 }
             }
             else if (bytes_write == 0)
             {
                 // EOF on write.
-                WriteException w(0, bytes_copied);
+                CopyFDWriteException w(0, bytes_copied);
                 throw(w);
             }
             else

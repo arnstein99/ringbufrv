@@ -39,7 +39,15 @@ int socket_from_address(
     serveraddr.sin_port = htons(port_number);
 
     struct hostent* server = gethostbyname(hostname.c_str());
-    if (server == nullptr) errorexit("gethostbyname");
+    if (server == nullptr)
+    {
+        std::string str = "gethostbyname(";
+        str += hostname;
+        str += ") : ";
+        str += strerror(h_errno);
+        NetutilsException r(str);
+        throw(r);
+    }
     bcopy((char *)server->h_addr,
     (char *)&serveraddr.sin_addr.s_addr, server->h_length);
 
@@ -126,11 +134,10 @@ int connect(
                 retval = 0;
                 break;
             default:
-#if (VERBOSE >= 1)
-                std::cerr << "select returns " << retval <<
-                    ", 1 was expected." << std::endl;
-#endif
-                retval = -1;
+                std::string str = "select() : ";
+                str += strerror(errno);
+                NetutilsException r(str);
+                throw(r);
                 break;
             }
         }
@@ -157,11 +164,12 @@ Listener::Listener(const std::string& hostname, const std::vector<int>& ports,
         if ((sa.sin_addr.s_addr = inet_addr (hostname.c_str())) ==
             INADDR_NONE)
         {
-            std::cerr << "Cannot use \"" << hostname <<
-                "\" with -listen." << std::endl;
-            std::cerr << "Please use numbers, e.g. 12.34.56.78 ." <<
-                std::endl;
-            exit(1);
+            std::string str = "inet_addr";
+            str += "(";
+            str += hostname;
+            str += ") fails";
+            NetutilsException r(str);
+            throw(r);
         }
     }
     FD_ZERO(&master_set);

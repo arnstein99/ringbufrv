@@ -1,13 +1,14 @@
+#include <iostream>
+#include <semaphore>
+#include <limits>
+#include <thread>
+#include <chrono>
+using namespace std::chrono_literals;
+#include <cstring>
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
-#include <thread>
-#include <iostream>
-#include <semaphore>
-#include <chrono>
-#include <limits>
-using namespace std::chrono_literals;
-#include <cstring>
+#include <netdb.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include "copyfd.h"
@@ -56,6 +57,9 @@ static void usage_error();
 
 int main(int argc, char* argv[])
 {
+    // For error reporting
+    try
+    {
     // Process user inputs
 
     int argc_copy = argc - 1;
@@ -79,6 +83,22 @@ int main(int argc, char* argv[])
             server_info[index].port_num = uri[index].ports[0];
         }
         server_info[index].hostname = std::move(uri[index].hostname);
+        // Give user immediate feedback. Otherwise, error message would only
+        // appear when connection is attempted. That could be much later.
+        if (server_info[index].hostname != "")
+        {
+            struct hostent* server =
+                gethostbyname(server_info[index].hostname.c_str());
+            if (server == nullptr)
+            {
+                std::string str = "gethostbyname(";
+                str += server_info[index].hostname;
+                str += ") : ";
+                str += strerror(h_errno);
+                std::cerr << str << std::endl;
+                exit(1);
+            }
+        }
     }
 
     // Programming note: user inputs processed, and uri is now obsolete.
@@ -152,11 +172,20 @@ int main(int argc, char* argv[])
                         {
                             if (fi[index].port_num > 1)
                             {
-                                final_sock[index] =
-                                    socket_from_address(
-                                        server_info[index].hostname,
-                                        fi[index].port_num,
-                                        options.max_connecttime_s);
+                                try
+                                {
+                                    final_sock[index] =
+                                        socket_from_address(
+                                            server_info[index].hostname,
+                                            fi[index].port_num,
+                                            options.max_connecttime_s);
+                                }
+                                catch (const NetutilsException& r)
+                                {
+                                    std::cerr << my_time() << " " <<
+                                        r.strng << std::endl;
+                                    exit(1);
+                                }
                                 if (final_sock[index] == -1)
                                 {
                                     if ((errno == ETIMEDOUT) ||
@@ -204,6 +233,13 @@ int main(int argc, char* argv[])
 #endif
     } while (repeat);
     last_thread.join();
+
+    }
+    catch (const NetutilsException& r)
+    {
+        std::cerr << my_time() << " " << r.strng << std::endl;
+        exit(1);
+    }
 
 #if (VERBOSE >= 1)
     std::cerr << my_time() << " Normal exit" << std::endl;
@@ -444,14 +480,14 @@ static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
         copyfd_while(firstFD, secondFD, cflag, 500000, 4*1024);
 #endif
     }
-    catch (const ReadException& r)
+    catch (const CopyFDReadException& r)
     {
 #if (VERBOSE >= 1)
         std::cerr << my_time() << " Read failure after " << r.byte_count <<
             " bytes: " << strerror(r.errn) << std::endl;
 #endif
     }
-    catch (const WriteException& w)
+    catch (const CopyFDWriteException& w)
     {
 #if (VERBOSE >= 1)
         std::cerr << my_time() << " Write failure after " << w.byte_count <<

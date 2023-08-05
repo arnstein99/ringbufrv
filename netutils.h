@@ -6,9 +6,19 @@
 #include <unistd.h>
 #include <sys/socket.h>
 
+class NetutilsException
+{
+public:
+    NetutilsException(const std::string& str) : strng(str) { }
+    std::string strng;
+};
+
 // Operates on an active file descriptor.
 void set_flags(int fd, int flags);
 void clear_flags(int fd, int flags);
+
+// Sets SO_REUSEADDR and SO_REUSEPORT
+void set_reuse(int socket);
 
 // Returns connected socket. Return value -1 indicates that
 // connect() was attempted, and failed.
@@ -18,9 +28,6 @@ int socket_from_address(
 
 // Waits for a client to accept
 int get_client(int listening_socket);
-
-// SO_REUSEADDR and SO_REUSEPORT
-void set_reuse(int socket);
 
 // connect(2) wih selectable timeout
 int connect(
