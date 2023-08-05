@@ -33,40 +33,24 @@ struct Options
 struct Uri
 {
     bool listening;
-    int port;                // -1 means stdin or stdout
+    std::vector<int> ports;  // -1 means stdin or stdout
     std::string hostname;    // Not always defined
+};
+
+struct ServerInfo
+{
+    ServerInfo() : port_num(-1), listener(nullptr) { }
+    ~ServerInfo() { if (listener) delete listener; }
+    inline bool listening() const { return (listener != nullptr); }
+    std::string hostname;    // Not always defined
+    int port_num;            // Not defined if listening
+    Listener* listener;
 };
 
 static Options process_options(int& argc, char**& argv);
 static Uri process_args(int& argc, char**& argv);
 
-// For passing by value instead of by reference
-struct Int2
-{
-public:
-    Int2() :  val{0,0} {}
-    Int2(const int other[2]) { val[0]=other[0]; val[1]=other[1]; }
-    Int2(const Int2& int2) { val[0]=int2.val[0]; val[1]=int2.val[1]; }
-    Int2& operator=(const int other[2]) {
-        val[0]=other[0]; val[1]=other[1]; return *this; }
-    Int2& operator=(const Int2& int2) {
-        if (this == &int2) return *this;
-        val[0]=int2.val[0];
-        val[1]=int2.val[1];
-        return *this;
-    }
-
-          int& operator[] (size_t index)       { return val[index]; }
-    const int& operator[] (size_t index) const { return val[index]; }
-
-    // A bit of a hack
-    int* reference() { return val; }
-
-private:
-    int val[2];
-};
-
-static void handle_clients(Int2 sck, const Uri* ur, const Options* opt);
+static void handle_clients(int sck[2], const Options& opt);
 static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag);
 static void usage_error();
 
@@ -82,22 +66,22 @@ int main(int argc, char* argv[])
     uri[1] = process_args(argc_copy, argv_copy);
     if (argc_copy != 0) usage_error();
 
-    int listener[2] = {-1, -1};
-    // Special processing for double listen
-    bool no_block = (uri[0].listening && uri[1].listening);
-    auto prepar_if = [&no_block, &listener, &uri] (int index)
+    ServerInfo server_info[2];
+    for (size_t index = 0 ; index < 2 ; ++index)
     {
         if (uri[index].listening)
         {
-            listener[index] =
-                socket_from_address(
-                    uri[index].hostname, uri[index].port, false);
-            if (no_block) set_flags(listener[index], O_NONBLOCK);
-            NEGCHECK("listen", listen(listener[index], listen_backlog));
+            server_info[index].listener = new Listener(
+                uri[index].hostname, uri[index].ports, listen_backlog);
         }
-    };
-    prepar_if(0);
-    prepar_if(1);
+        else
+        {
+            server_info[index].port_num = uri[index].ports[0];
+        }
+        server_info[index].hostname = std::move(uri[index].hostname);
+    }
+
+    // Programming note: user inputs processed, and uri is now obsolete.
 
     // Prevent a crash
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
@@ -105,8 +89,14 @@ int main(int argc, char* argv[])
         perror("signal");
         exit(1);
     }
+    if (signal(SIGTRAP, SIG_IGN) == SIG_ERR)
+    {
+        perror("signal");
+        exit(1);
+    }
 
-    bool repeat = (uri[0].listening || uri[1].listening);
+    bool repeat =
+        (server_info[0].listening() || server_info[1].listening());
     std::thread last_thread;
     std::counting_semaphore<semaphore_max_max>
         clients_limiter{options.max_clients};
@@ -115,52 +105,58 @@ int main(int argc, char* argv[])
     do
     {
         clients_limiter.acquire();
-#if (VERBOSE >= 2)
-        std::cerr << my_time() << " Begin copy loop" << std::endl;
-#endif
-        int accepted_sock[2];
+        Listener::SocketInfo final_info[2];
+        auto accept2 = [&server_info, &final_info] (int index) {
+            final_info[index] =
+                server_info[index].listener->get_client();
+        };
         // Special processing for double listen
-        if (uri[0].listening && uri[1].listening)
+        if (server_info[0].listening() && server_info[1].listening())
         {
             // wait for both clients to accept
-            get_two_clients(listener, accepted_sock);
+            std::thread t0(accept2, 0);
+            std::thread t1(accept2, 1);
+            t0.join();
+            t1.join();
         }
         else
         {
             // Wait for client to listening socket, if any.
             for (size_t index = 0 ; index < 2 ; ++index)
             {
-                if (uri[index].listening)
+                if (server_info[index].listening())
                 {
-                    accepted_sock[index] = get_client(listener[index]);
+                    accept2(index);
+                }
+                else
+                {
+                    final_info[index].port_num =
+                        server_info[index].port_num;
+                    final_info[index].socketFD = -1;
                 }
             }
         }
 
+        ByValue<Listener::SocketInfo,2> fi(final_info);
         auto responder =
-            [&clients_limiter, &cip_limiter, accepted_sock, uri, options]()
+            [&clients_limiter, &cip_limiter, &server_info, fi, &options] ()
             {
                 SemaphoreReleaser clientsToken(clients_limiter);
                 int final_sock[2]{-1, -1};
-                FileCloser closer0(final_sock[0]);
-                FileCloser closer1(final_sock[1]);
                 cip_limiter.acquire();
                 bool success = true;
                 {   SemaphoreReleaser cip_token(cip_limiter);
                     for (size_t index = 0 ; index < 2 ; ++index)
                     {
-                        if (uri[index].listening)
+                        if (!server_info[index].listening())
                         {
-                            final_sock[index] = accepted_sock[index];
-                        }
-                        else
-                        {
-                            if (uri[index].port > 1)
+                            if (fi[index].port_num > 1)
                             {
                                 final_sock[index] =
                                     socket_from_address(
-                                        uri[index].hostname, uri[index].port,
-                                        true, options.max_connecttime_s);
+                                        server_info[index].hostname,
+                                        fi[index].port_num,
+                                        options.max_connecttime_s);
                                 if (final_sock[index] == -1)
                                 {
                                     if ((errno == ETIMEDOUT) ||
@@ -179,16 +175,27 @@ int main(int argc, char* argv[])
                                 }
                             }
                         }
+                        else
+                        {
+                            final_sock[index] = fi[index].socketFD;
+                        }
                     }
                 }
                 if (success)
                 {
-                    handle_clients(final_sock, uri, &options);
+                    handle_clients(final_sock, options);
+                    // handle_clients() will close both sockets at a
+                    // future time.
                 }
+                else
+                {
+                    if (final_sock[0] > 2) close(final_sock[0]);
+                    if (final_sock[1] > 2) close(final_sock[1]);
 #if (VERBOSE >= 1)
-                std::cerr << my_time() << " closing " << final_sock[0] <<
-                    " " << final_sock[1] << std::endl;
+                    std::cerr << my_time() << " early closing " <<
+                        final_sock[0] << " " << final_sock[1] << std::endl;
 #endif
+                }
             };
         last_thread = std::thread(responder);
         if (repeat) last_thread.detach();
@@ -271,8 +278,8 @@ static Options process_options(int& argc, char**& argv)
 static Uri process_args(int& argc, char**& argv)
 // Group can be one of
 //     -stdio
-//     -listen <port>
-//     -listen <address>:<port>
+//     -listen <port,port,...>
+//     -listen <address>:<port,port,...>
 //     -connect <hostname> <port>
 {
     Uri uri;
@@ -284,8 +291,8 @@ static Uri process_args(int& argc, char**& argv)
 
     if (strcmp(option, "-stdio") == 0)
     {
+        uri.ports.push_back(-1);
         uri.listening = false;
-        uri.port = -1;
     }
     else if (strcmp(option, "-listen") == 0)
     {
@@ -295,15 +302,27 @@ static Uri process_args(int& argc, char**& argv)
         ++argv;
         --argc;
         auto vec = mstrtok(value, ':');
+        std::vector<std::string> vec2;
         switch (vec.size())
         {
+        // TODO: eliminate redundancy in the next two cases
         case 1:
             uri.hostname = "";
-            uri.port = mstoi(vec[0]);
+            vec2 = mstrtok(vec[0], ',');
+            if (vec2.size() == 0) usage_error();
+            for (auto value2 : vec2)
+            {
+                uri.ports.push_back(mstoi(value2));
+            }
             break;
         case 2:
             uri.hostname = vec[0];
-            uri.port = mstoi(vec[1]);
+            vec2 = mstrtok(vec[1], ',');
+            if (vec2.size() == 0) usage_error();
+            for (auto value2 : vec2)
+            {
+                uri.ports.push_back(mstoi(value2));
+            }
             break;
         default:
             usage_error();
@@ -323,7 +342,7 @@ static Uri process_args(int& argc, char**& argv)
         {
         case 2:
             uri.hostname = vec[0];
-            uri.port = mstoi(vec[1]);
+            uri.ports.push_back(mstoi(vec[1]));
             break;
         default:
             usage_error();
@@ -348,15 +367,16 @@ void usage_error()
     std::cerr << "Each of <first_spec> and <second_spec> can be one of" <<
         std::endl;
     std::cerr << "    -stdio" << std::endl;
-    std::cerr << "    -listen <port_number>" << std::endl;
-    std::cerr << "    -listen <address>:<port_number>" << std::endl;
+    std::cerr << "    -listen <port_number,port_number,...>" << std::endl;
+    std::cerr << "    -listen <address>:<port_number,port_number,...>" <<
+        std::endl;
     std::cerr << "    -connect <hostname>:<port_number>" << std::endl;
     exit (1);
 }
 
-void handle_clients(Int2 sck, const Uri* ur, const Options* opt)
+void handle_clients(int sck[2], const Options& opt)
 {
-#if (VERBOSE >= 2)
+#if (VERBOSE >= 1)
     std::cerr << my_time() << " Begin copy loop " << sck[0] << " <--> " <<
         sck[1] << std::endl;
 #endif
@@ -364,39 +384,47 @@ void handle_clients(Int2 sck, const Uri* ur, const Options* opt)
     std::counting_semaphore<2> copy_semaphore(2);
 
     copy_semaphore.acquire();
-    auto proc1 = [&ur, &sck, &continue_flag, &copy_semaphore] ()
+    auto proc1 = [sck, &continue_flag, &copy_semaphore] ()
     {
         SemaphoreReleaser token(copy_semaphore);
-        if (ur[0].port == -1) sck[0] = 0;
-        if (ur[1].port == -1) sck[1] = 1;
-        copy(sck[0], sck[1], continue_flag);
+        int sock[2];
+        sock[0] = (sck[0] == -1) ? 0 : sck[0];
+        sock[1] = (sck[1] == -1) ? 1 : sck[1];
+        copy(sock[0], sock[1], continue_flag);
         continue_flag = false;
     };
     std::thread one(proc1);
 
     copy_semaphore.acquire();
-    auto proc2 = [&ur, &sck, &continue_flag, &copy_semaphore] ()
+    auto proc2 = [sck, &continue_flag, &copy_semaphore] ()
     {
         SemaphoreReleaser token(copy_semaphore);
-        if (ur[0].port == -1) sck[0] = 1;
-        if (ur[1].port == -1) sck[1] = 0;
-        copy(sck[1], sck[0], continue_flag);
+        int sock[2];
+        sock[1] = (sck[1] == -1) ? 0 : sck[1];
+        sock[0] = (sck[0] == -1) ? 1 : sck[0];
+        copy(sock[1], sock[0], continue_flag);
         continue_flag = false;
     };
     std::thread two(proc2);
 
 #if (VERBOSE >= 1)
-    int normal = copy_semaphore.try_acquire_for(opt->max_iotime_s * 1s);
+    int normal = copy_semaphore.try_acquire_for(opt.max_iotime_s * 1s);
     if (!normal)
     {
         std::cerr << my_time() << " Note: client terminated" << std::endl;
     }
 #else
-    copy_semaphore.try_acquire_for(opt->max_iotime_s * 1s);
+    copy_semaphore.try_acquire_for(opt.max_iotime_s * 1s);
 #endif
     continue_flag = false;
     one.join();
     two.join();
+#if (VERBOSE >= 1)
+    std::cerr << my_time() << " closing " << sck[0] <<
+        " " << sck[1] << std::endl;
+#endif
+    if (sck[0] > 2) close (sck[0]);
+    if (sck[1] > 2) close (sck[1]);
 }
 
 static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)

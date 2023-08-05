@@ -24,7 +24,16 @@ protected:
 struct FileCloser : public CleanerBase<int>
 {
     FileCloser(int& i) : CleanerBase<int>(i) { }
-    ~FileCloser() { if (_obj >= 4) close(_obj); }
+    ~FileCloser() { if (_obj > 2) close(_obj); }
+};
+
+struct DoubleFileCloser : public CleanerBase<int*>
+{
+    DoubleFileCloser(int* i) : CleanerBase<int*>(i) { }
+    ~DoubleFileCloser() {
+        if (_obj[0] > 2) close(_obj[0]);
+        if (_obj[1] > 2) close(_obj[1]);
+    }
 };
 
 template<std::ptrdiff_t _d>

@@ -1,6 +1,7 @@
 #include "netutils.h"
 #include "miscutils.h"
 
+#include <iostream>
 #include <thread>
 #include <chrono>
 using namespace std::chrono_literals;
@@ -8,10 +9,6 @@ using namespace std::chrono_literals;
 #include <fcntl.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-
-#if (VERBOSE >= 1)
-#include <iostream>
-#endif
 
 void set_flags(int fd, int flags)
 {
@@ -28,7 +25,7 @@ void clear_flags(int fd, int flags)
 }
 
 int socket_from_address(
-    const std::string& hostname, int port_number, bool do_connect,
+    const std::string& hostname, int port_number,
     unsigned max_connecttime_s)
 {
     // Create socket
@@ -41,53 +38,29 @@ int socket_from_address(
     serveraddr.sin_family = AF_INET;
     serveraddr.sin_port = htons(port_number);
 
-    if (do_connect == false)
-    {
-        if (hostname == "")
-        {
-            serveraddr.sin_addr.s_addr = htonl (INADDR_ANY);
-        }
-        else
-        {
-            const char* host_string = hostname.c_str();
-            serveraddr.sin_addr.s_addr = inet_addr(host_string);
-        }
-        set_reuse(socketFD);
+    struct hostent* server = gethostbyname(hostname.c_str());
+    if (server == nullptr) errorexit("gethostbyname");
+    bcopy((char *)server->h_addr,
+    (char *)&serveraddr.sin_addr.s_addr, server->h_length);
 
-        // Bind to address but do not connect to anything
-        NEGCHECK("bind",
-            bind(
-                socketFD,
-                (struct sockaddr *)(&serveraddr),
-                (socklen_t)sizeof (serveraddr)));
-#if (VERBOSE >= 2)
-            std::cerr << my_time() << " bound socket " << socketFD << std::endl;
-#endif
+    // Connect to server
+    if (connect(
+        socketFD, (struct sockaddr*)(&serveraddr), sizeof(serveraddr),
+        max_connecttime_s) < 0)
+    {
+        close(socketFD);
+        return -1;
     }
-    else
-    {
-        struct hostent* server = gethostbyname(hostname.c_str());
-        if (server == nullptr) errorexit("gethostbyname");
-        bcopy((char *)server->h_addr,
-        (char *)&serveraddr.sin_addr.s_addr, server->h_length);
-
-        // Connect to server
-        if (connect(
-            socketFD, (struct sockaddr*)(&serveraddr), sizeof(serveraddr),
-            max_connecttime_s) < 0)
-        {
-            close(socketFD);
-            return -1;
-        }
 #if (VERBOSE >= 1)
+    std::cerr << my_time() << " using port " << port_number << "," <<
+        std::endl;
     std::cerr << my_time() << " connected " <<
         inet_ntoa(serveraddr.sin_addr) << ":" << socketFD << std::endl;
 #endif
 #if (VERBOSE >= 2)
-            std::cerr << my_time() << " connected socket " << socketFD <<
-                std::endl;
+        std::cerr << my_time() << " connected socket " << socketFD <<
+            std::endl;
 #endif
-    }
 
     return socketFD;
 }
@@ -111,72 +84,6 @@ int get_client(int listening_socket)
 #endif
 
     return client_socket;
-}
-
-void get_two_clients(const int listening_socket[2], int client_socket[2])
-{
-    int maxfd =
-        std::max(listening_socket[0], listening_socket[1]) + 1;
-    fd_set read_set;
-    int cl_socket[2] = {-1, -1};
-    do
-    {
-        fd_set* p_read_set = nullptr;
-        FD_ZERO(&read_set);
-
-        auto no_wait_listen = [&] (int index)
-        {
-            if (cl_socket[index] < 0)
-            {
-                struct sockaddr_in addr;
-                socklen_t addrlen = (socklen_t)sizeof(addr);
-                cl_socket[index] =
-                    accept(
-                        listening_socket[index],
-                        (struct sockaddr*)(&addr), &addrlen);
-                if (cl_socket[index] < 0)
-                {
-                    if ((errno == EWOULDBLOCK) || (errno == EAGAIN))
-                    {
-                        // This is when to select()
-                        FD_SET(listening_socket[index], &read_set);
-                        p_read_set = &read_set;
-                    }
-                    else
-                    {
-                        // Some other error on input
-                        errorexit("accept");
-                    }
-                }
-                else
-                {
-#if (VERBOSE >= 1)
-                    std::cerr << my_time() << " accepted " <<
-                        inet_ntoa(addr.sin_addr) << std::endl;
-#endif
-#if (VERBOSE >= 2)
-                    std::cerr << my_time() << "accepted socket " <<
-                        cl_socket[index] << " on listening socket " <<
-                        listening_socket[index] << std::endl;
-#endif
-                }
-            }
-        };
-        no_wait_listen(0);
-        no_wait_listen(1);
-
-        if (p_read_set)
-        {
-            NEGCHECK("select",
-                (select(maxfd, p_read_set, nullptr, nullptr, nullptr)));
-        }
-
-    } while ((cl_socket[0] < 0) || (cl_socket[1] < 0));
-#if (VERBOSE >= 2)
-    std::cerr << my_time() << " finished accepts" << std::endl;
-#endif
-    client_socket[0] = cl_socket[0];
-    client_socket[1] = cl_socket[1];
 }
 
 void set_reuse(int socket)
@@ -229,4 +136,86 @@ int connect(
         }
     }
     return retval;
+}
+
+////////////////////////////
+// Listener class methods //
+////////////////////////////
+
+Listener::Listener(const std::string& hostname, const std::vector<int>& ports,
+    int backlog)
+{
+    struct sockaddr_in sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    if (hostname == "")
+    {
+        sa.sin_addr.s_addr = htonl (INADDR_ANY);
+    }
+    else
+    {
+        if ((sa.sin_addr.s_addr = inet_addr (hostname.c_str())) ==
+            INADDR_NONE)
+        {
+            std::cerr << "Cannot use \"" << hostname <<
+                "\" with -listen." << std::endl;
+            std::cerr << "Please use numbers, e.g. 12.34.56.78 ." <<
+                std::endl;
+            exit(1);
+        }
+    }
+    FD_ZERO(&master_set);
+    maxfd = 0;
+    for (auto port_num : ports)
+    {
+        int socketFD;
+        NEGCHECK(
+            "socket", socketFD = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP));
+        set_reuse(socketFD);
+        set_flags(socketFD, O_NONBLOCK);
+        int optval = 1;
+        NEGCHECK("setsockopt",
+            setsockopt(socketFD, SOL_SOCKET, SO_KEEPALIVE, &optval,
+            sizeof(optval)));
+
+        sa.sin_port = htons ((uint16_t)port_num);
+        NEGCHECK("bind",
+            bind(socketFD, (struct sockaddr *)(&sa), (socklen_t)sizeof (sa)));
+        NEGCHECK("listen",  listen(socketFD, backlog));
+        FD_SET (socketFD, &master_set);
+        maxfd = std::max(maxfd, socketFD);
+        SocketInfo info;
+        info.socketFD = socketFD;
+        info.port_num = port_num;
+        socket_infos.push_back(info);
+    }
+}
+
+Listener::SocketInfo Listener::get_client()
+{
+    fd_set read_set = master_set;
+    NEGCHECK("select", select(maxfd+1, &read_set, nullptr, nullptr, nullptr));
+    SocketInfo listening_info;
+    listening_info.socketFD = -1;
+    do
+    {
+        for (auto info : socket_infos)
+        {
+            if (FD_ISSET(info.socketFD, &read_set))
+            {
+                listening_info = info;
+                break;
+            }
+        }
+    } while (listening_info.socketFD == -1); // Handles spurious connections
+
+    SocketInfo return_info;
+    return_info.port_num = listening_info.port_num;
+#if (VERBOSE >= 1)
+    std::cerr << my_time() << " using port " << listening_info.port_num <<
+        "," << std::endl;
+#endif
+    return_info.socketFD = ::get_client(listening_info.socketFD);
+
+    return return_info;
 }
