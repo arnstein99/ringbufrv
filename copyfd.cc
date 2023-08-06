@@ -13,7 +13,7 @@
 #include <iomanip>
 #include <chrono>
 using namespace std::chrono;
-#endif // VERBOSE
+#endif
 
 copyfd_stats copyfd(
     int readfd, int writefd, size_t buffer_size)
@@ -63,13 +63,13 @@ copyfd_stats copyfd_while(
             readvec[1].iov_base = read_start1;
 #if (VERBOSE >= 4)
             auto before = system_clock::now();
-#endif // VERBOSE
+#endif
             bytes_read = readv(readfd, readvec, read_nseg);
 #if (VERBOSE >= 4)
             auto after = system_clock::now();
             auto dur = duration_cast<milliseconds>(after - before).count();
             std::cerr << "read time " << dur << std::endl;
-#endif // VERBOSE
+#endif
             if (bytes_read < 0)
             {
                 if ((errno == EWOULDBLOCK) || (errno == EAGAIN))
@@ -111,13 +111,13 @@ copyfd_stats copyfd_while(
             writevec[1].iov_base = write_start1;
 #if (VERBOSE >= 4)
             auto before = system_clock::now();
-#endif // VERBOSE
+#endif
             bytes_write = writev(writefd, writevec, write_nseg);
 #if (VERBOSE >= 4)
             auto after = system_clock::now();
             auto dur = duration_cast<milliseconds>(after - before).count();
             std::cerr << "write time " << dur << std::endl;
-#endif // VERBOSE
+#endif
             if (bytes_write < 0)
             {
                 if ((errno == EWOULDBLOCK) || (errno == EAGAIN))
@@ -169,7 +169,7 @@ copyfd_stats copyfd_while(
                     maxfd, p_read_set, p_write_set, nullptr, tvp)));
         }
 
-#if (VERBOSE >= 3)
+#if (VERBOSE >= 4)
         if (read_nseg)
         {
             std::cerr << std::setw(7) << std::left << "read" <<

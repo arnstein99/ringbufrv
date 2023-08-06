@@ -60,38 +60,15 @@ int socket_from_address(
         return -1;
     }
 #if (VERBOSE >= 1)
-    std::cerr << my_time() << " using port " << port_number << "," <<
-        std::endl;
     std::cerr << my_time() << " connected " <<
-        inet_ntoa(serveraddr.sin_addr) << ":" << socketFD << std::endl;
+        inet_ntoa(serveraddr.sin_addr) << ":" << port_number << std::endl;
 #endif
 #if (VERBOSE >= 2)
-        std::cerr << my_time() << " connected socket " << socketFD <<
+        std::cerr << my_time() << "     using FD " << socketFD <<
             std::endl;
 #endif
 
     return socketFD;
-}
-
-int get_client(int listening_socket)
-{
-    struct sockaddr_in addr;
-    socklen_t addrlen = (socklen_t)sizeof(addr);
-    int client_socket;
-    NEGCHECK("accept", (client_socket = accept(
-        listening_socket, (struct sockaddr*)(&addr), &addrlen)));
-#if (VERBOSE >= 1)
-    std::cerr << my_time() << " accepted " << inet_ntoa(addr.sin_addr) <<
-        ":" << client_socket << std::endl;
-#endif
-#if (VERBOSE >= 2)
-    std::cerr << my_time() << " accepted on socket " << listening_socket <<
-        std::endl;
-    std::cerr << my_time() << " accepted socket " << client_socket <<
-        " on listening socket " << listening_socket << std::endl;
-#endif
-
-    return client_socket;
 }
 
 void set_reuse(int socket)
@@ -219,11 +196,19 @@ Listener::SocketInfo Listener::get_client()
 
     SocketInfo return_info;
     return_info.port_num = listening_info.port_num;
-#if (VERBOSE >= 1)
-    std::cerr << my_time() << " using port " << listening_info.port_num <<
-        "," << std::endl;
-#endif
-    return_info.socketFD = ::get_client(listening_info.socketFD);
 
+    struct sockaddr_in addr;
+    socklen_t addrlen = (socklen_t)sizeof(addr);
+    NEGCHECK("accept", (return_info.socketFD = accept(
+        listening_info.socketFD, (struct sockaddr*)(&addr), &addrlen)));
+
+#if (VERBOSE >= 1)
+    std::cerr << my_time() << " accepted " << inet_ntoa(addr.sin_addr) <<
+        "@" << listening_info.port_num << std::endl;
+#endif
+#if (VERBOSE >= 2)
+    std::cerr << my_time() << "     using FD " << return_info.socketFD <<
+        std::endl;
+#endif
     return return_info;
 }

@@ -26,9 +26,6 @@ int socket_from_address(
     const std::string& hostname, int port_number,
     unsigned max_connect_time_s = 300);
 
-// Waits for a client to accept
-int get_client(int listening_socket);
-
 // connect(2) wih selectable timeout
 int connect(
     int sockfd, const struct sockaddr *addr, socklen_t addrlen,

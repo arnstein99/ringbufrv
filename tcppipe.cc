@@ -220,7 +220,7 @@ int main(int argc, char* argv[])
                 {
                     if (final_sock[0] > 2) close(final_sock[0]);
                     if (final_sock[1] > 2) close(final_sock[1]);
-#if (VERBOSE >= 1)
+#if (VERBOSE >= 2)
                     std::cerr << my_time() << " early closing " <<
                         final_sock[0] << " " << final_sock[1] << std::endl;
 #endif
@@ -228,7 +228,7 @@ int main(int argc, char* argv[])
             };
         last_thread = std::thread(responder);
         if (repeat) last_thread.detach();
-#if (VERBOSE >= 2)
+#if (VERBOSE >= 3)
         std::cerr << my_time() << " End copy loop" << std::endl;
 #endif
     } while (repeat);
@@ -241,7 +241,7 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-#if (VERBOSE >= 1)
+#if (VERBOSE >= 3)
     std::cerr << my_time() << " Normal exit" << std::endl;
 #endif
     return 0;
@@ -412,8 +412,8 @@ void usage_error()
 
 void handle_clients(int sck[2], const Options& opt)
 {
-#if (VERBOSE >= 1)
-    std::cerr << my_time() << " Begin copy loop " << sck[0] << " <--> " <<
+#if (VERBOSE >= 3)
+    std::cerr << my_time() << " Begin copy loop FD " << sck[0] << " <--> FD " <<
         sck[1] << std::endl;
 #endif
     std::atomic<bool> continue_flag = true;
@@ -443,7 +443,7 @@ void handle_clients(int sck[2], const Options& opt)
     };
     std::thread two(proc2);
 
-#if (VERBOSE >= 1)
+#if (VERBOSE >= 3)
     int normal = copy_semaphore.try_acquire_for(opt.max_iotime_s * 1s);
     if (!normal)
     {
@@ -455,9 +455,9 @@ void handle_clients(int sck[2], const Options& opt)
     continue_flag = false;
     one.join();
     two.join();
-#if (VERBOSE >= 1)
-    std::cerr << my_time() << " closing " << sck[0] <<
-        " " << sck[1] << std::endl;
+#if (VERBOSE >= 3)
+    std::cerr << my_time() << " closing FD " << sck[0] <<
+        " FD " << sck[1] << std::endl;
 #endif
     if (sck[0] > 2) close (sck[0]);
     if (sck[1] > 2) close (sck[1]);
@@ -469,11 +469,13 @@ static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
     set_flags(secondFD, O_NONBLOCK);
     try
     {
-#if (VERBOSE >= 2)
+#if (VERBOSE >= 3)
         std::cerr << my_time() << " starting copy, FD " << firstFD <<
             " to FD " << secondFD << std::endl;
         auto stats = copyfd_while(firstFD, secondFD, cflag, 500000, 4*1024);
-        std::cerr << stats.bytes_copied << " bytes, " <<
+        std::cerr << my_time() << " FD " << firstFD << " --> FD " << secondFD <<
+            ": " <<
+            stats.bytes_copied << " bytes, " <<
             stats.reads << " reads, " <<
             stats.writes << " writes." << std::endl;
 #else
@@ -482,14 +484,14 @@ static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
     }
     catch (const CopyFDReadException& r)
     {
-#if (VERBOSE >= 1)
+#if (VERBOSE >= 3)
         std::cerr << my_time() << " Read failure after " << r.byte_count <<
             " bytes: " << strerror(r.errn) << std::endl;
 #endif
     }
     catch (const CopyFDWriteException& w)
     {
-#if (VERBOSE >= 1)
+#if (VERBOSE >= 3)
         std::cerr << my_time() << " Write failure after " << w.byte_count <<
             " bytes: " << strerror(w.errn) << std::endl;
 #endif
