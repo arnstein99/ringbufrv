@@ -81,6 +81,24 @@ void set_reuse(int socket)
         setsockopt(socket, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)));
 #endif
 }
+void set_nolinger(int socket)
+{
+    struct linger ling {0, 0};
+    NEGCHECK("setsockopt",
+        setsockopt(socket, SOL_SOCKET, SO_LINGER, &ling, sizeof(ling)));
+}
+
+void graceful_close(int socketFD)
+{
+    if (shutdown(socketFD, SHUT_RDWR) != 0)
+    {
+#if (VERBOSE >= 2)
+        std::cerr << my_time() << " shutdown(" << socketFD << ") : " <<
+            strerror(errno) << std::endl;
+#endif
+    }
+    NEGCHECK("close", close(socketFD));
+}
 
 int connect(
     int sockfd, const struct sockaddr *addr, socklen_t addrlen,

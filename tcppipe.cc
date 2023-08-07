@@ -218,19 +218,20 @@ int main(int argc, char* argv[])
                 }
                 else
                 {
-                    if (final_sock[0] > 2) close(final_sock[0]);
-                    if (final_sock[1] > 2) close(final_sock[1]);
 #if (VERBOSE >= 2)
                     std::cerr << my_time() << " early closing " <<
                         final_sock[0] << " " << final_sock[1] << std::endl;
 #endif
+                    if (final_sock[0] > 2) graceful_close(final_sock[0]);
+                    if (final_sock[1] > 2) graceful_close(final_sock[1]);
                 }
+#if (VERBOSE >= 3)
+                std::cerr << my_time() << " End copy loop FD " <<
+                    final_sock[0] << " <--> FD " << final_sock[1] << std::endl;
+#endif
             };
         last_thread = std::thread(responder);
         if (repeat) last_thread.detach();
-#if (VERBOSE >= 3)
-        std::cerr << my_time() << " End copy loop" << std::endl;
-#endif
     } while (repeat);
     last_thread.join();
 
@@ -417,9 +418,9 @@ void handle_clients(int sck[2], const Options& opt)
         sck[1] << std::endl;
 #endif
     std::atomic<bool> continue_flag = true;
-    std::counting_semaphore<2> copy_semaphore(2);
-
+    std::binary_semaphore copy_semaphore(1);
     copy_semaphore.acquire();
+
     auto proc1 = [sck, &continue_flag, &copy_semaphore] ()
     {
         SemaphoreReleaser token(copy_semaphore);
@@ -427,11 +428,7 @@ void handle_clients(int sck[2], const Options& opt)
         sock[0] = (sck[0] == -1) ? 0 : sck[0];
         sock[1] = (sck[1] == -1) ? 1 : sck[1];
         copy(sock[0], sock[1], continue_flag);
-        continue_flag = false;
     };
-    std::thread one(proc1);
-
-    copy_semaphore.acquire();
     auto proc2 = [sck, &continue_flag, &copy_semaphore] ()
     {
         SemaphoreReleaser token(copy_semaphore);
@@ -439,8 +436,9 @@ void handle_clients(int sck[2], const Options& opt)
         sock[1] = (sck[1] == -1) ? 0 : sck[1];
         sock[0] = (sck[0] == -1) ? 1 : sck[0];
         copy(sock[1], sock[0], continue_flag);
-        continue_flag = false;
     };
+
+    std::thread one(proc1);
     std::thread two(proc2);
 
 #if (VERBOSE >= 3)
@@ -459,8 +457,8 @@ void handle_clients(int sck[2], const Options& opt)
     std::cerr << my_time() << " closing FD " << sck[0] <<
         " FD " << sck[1] << std::endl;
 #endif
-    if (sck[0] > 2) close (sck[0]);
-    if (sck[1] > 2) close (sck[1]);
+    if (sck[0] > 2) graceful_close(sck[0]);
+    if (sck[1] > 2) graceful_close(sck[1]);
 }
 
 static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
