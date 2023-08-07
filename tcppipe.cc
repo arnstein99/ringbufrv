@@ -418,7 +418,8 @@ void handle_clients(int sck[2], const Options& opt)
         sck[1] << std::endl;
 #endif
     std::atomic<bool> continue_flag = true;
-    std::binary_semaphore copy_semaphore(1);
+    std::counting_semaphore<2> copy_semaphore(2);
+    copy_semaphore.acquire();
     copy_semaphore.acquire();
 
     auto proc1 = [sck, &continue_flag, &copy_semaphore] ()
@@ -441,16 +442,30 @@ void handle_clients(int sck[2], const Options& opt)
     std::thread one(proc1);
     std::thread two(proc2);
 
-#if (VERBOSE >= 3)
-    int normal = copy_semaphore.try_acquire_for(opt.max_iotime_s * 1s);
-    if (!normal)
+    // TODO: is there a better way?
+    bool abort = false;
+    auto deadline = std::chrono::system_clock::now() + (opt.max_iotime_s * 1s);
+    bool timeout = ! copy_semaphore.try_acquire_until(deadline);
+    if (timeout)
     {
-        std::cerr << my_time() << " Note: client terminated" << std::endl;
+        abort = true;
     }
-#else
-    copy_semaphore.try_acquire_for(opt.max_iotime_s * 1s);
+    else
+    {
+        timeout = ! copy_semaphore.try_acquire_until(deadline);
+        if (timeout)
+        {
+            abort = true;
+        }
+    }
+    if (abort)
+    {
+        continue_flag = false;
+#if (VERBOSE >= 3)
+        std::cerr << my_time() << " Note: client (FD " << sck[0] <<
+            " <--> FD " << sck[1] <<") terminated" << std::endl;
 #endif
-    continue_flag = false;
+    }
     one.join();
     two.join();
 #if (VERBOSE >= 3)
