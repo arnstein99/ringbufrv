@@ -497,6 +497,12 @@ static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
     }
     catch (const CopyFDReadException& r)
     {
+        if (r.errn == ECONNREFUSED)
+        {
+            std::cerr << my_time() << " read() : "
+                << strerror(ECONNREFUSED) << std::endl;
+            exit(1);
+        }
 #if (VERBOSE >= 3)
         std::cerr << my_time() << " Read failure after " << r.byte_count <<
             " bytes: " << strerror(r.errn) << std::endl;
@@ -504,6 +510,12 @@ static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
     }
     catch (const CopyFDWriteException& w)
     {
+        if (w.errn == ECONNREFUSED)
+        {
+            std::cerr << my_time() << " write() : "
+                << strerror(ECONNREFUSED) << std::endl;
+            exit(1);
+        }
 #if (VERBOSE >= 3)
         std::cerr << my_time() << " Write failure after " << w.byte_count <<
             " bytes: " << strerror(w.errn) << std::endl;
