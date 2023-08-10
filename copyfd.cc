@@ -2,7 +2,7 @@
 #include "miscutils.h"
 
 #include "ringbufr.h"
-#include <sys/select.h>
+#include <sys/poll.h>
 #include <sys/uio.h>
 #include <algorithm>
 #include <cstring>
@@ -19,17 +19,19 @@ copyfd_stats copyfd(
     int readfd, int writefd, size_t buffer_size)
 {
     std::atomic<bool> cflag(true);
-    return copyfd_while(readfd, writefd, cflag, 0, buffer_size);
+    return copyfd_while(readfd, writefd, cflag, -1, buffer_size);
 }
 
 copyfd_stats copyfd_while(
     int readfd, int writefd,
-    const std::atomic<bool>& continue_flag, long check_usec, size_t buffer_size)
+    const std::atomic<bool>& continue_flag, int check_msec, size_t buffer_size)
 {
-    int maxfd = std::max(readfd, writefd) + 1;
-    fd_set read_set;
-    fd_set write_set;
-    struct timeval tv;
+    pollfd pfd[2];  // Read and write
+    memset(pfd, 0, 2 * sizeof(pollfd));
+    pfd[0].fd = readfd;
+    pfd[0].events = POLLIN;
+    pfd[1].fd = writefd;
+    pfd[1].events = POLLOUT;
 
     RingbufR<unsigned char> bufr(buffer_size);
 
@@ -42,22 +44,21 @@ copyfd_stats copyfd_while(
     unsigned char* write_start0;
     unsigned char* write_start1;
 
-    bool l_continue = true;
     ssize_t bytes_read = 0;
     ssize_t bytes_write = 0;
     bool inquire_needed = true;
+    bool poll_needed = false;
+    bool read_possible = true;
+    bool write_possible = true;
     do
     {
-        fd_set* p_read_set = nullptr;
-        fd_set* p_write_set = nullptr;
-
         if (inquire_needed) {
             read_nseg = bufr.pushInquire(
                 readvec[0].iov_len, read_start0,
                 readvec[1].iov_len, read_start1);
         }
         bytes_read = 0;
-        if (read_nseg)
+        if (read_nseg && read_possible)
         {
             readvec[0].iov_base = read_start0;
             readvec[1].iov_base = read_start1;
@@ -68,16 +69,15 @@ copyfd_stats copyfd_while(
 #if (VERBOSE >= 4)
             auto after = system_clock::now();
             auto dur = duration_cast<milliseconds>(after - before).count();
-            std::cerr << "read time " << dur << std::endl;
+            if (bytes_read > 0)
+                std::cerr << "read time " << dur << std::endl;
 #endif
             if (bytes_read < 0)
             {
                 if ((errno == EWOULDBLOCK) || (errno == EAGAIN))
                 {
-                    // This is when to select()
-                    FD_ZERO(&read_set);
-                    FD_SET(readfd, &read_set);
-                    p_read_set = &read_set;
+                    // poll() may be needed
+                    ;
                 }
                 else
                 {
@@ -93,7 +93,7 @@ copyfd_stats copyfd_while(
             }
             else
             {
-                // Some data was input, no need to select.
+                // Some data was input, no need to poll.
                 bufr.push(bytes_read);
             }
         }
@@ -105,7 +105,7 @@ copyfd_stats copyfd_while(
                 writevec[0].iov_len, write_start0,
                 writevec[1].iov_len, write_start1);
         }
-        if (write_nseg)
+        if (write_nseg && write_possible)
         {
             writevec[0].iov_base = write_start0;
             writevec[1].iov_base = write_start1;
@@ -116,16 +116,15 @@ copyfd_stats copyfd_while(
 #if (VERBOSE >= 4)
             auto after = system_clock::now();
             auto dur = duration_cast<milliseconds>(after - before).count();
-            std::cerr << "write time " << dur << std::endl;
+            if (bytes_write > 0)
+                std::cerr << "write time " << dur << std::endl;
 #endif
             if (bytes_write < 0)
             {
                 if ((errno == EWOULDBLOCK) || (errno == EAGAIN))
                 {
-                    // This is when to select().
-                    FD_ZERO(&write_set);
-                    FD_SET(writefd, &write_set);
-                    p_write_set = &write_set;
+                    // poll() may be needed
+                    ;
                 }
                 else
                 {
@@ -142,59 +141,58 @@ copyfd_stats copyfd_while(
             }
             else
             {
-                // Some data was output, no need to select.
+                // Some data was output, no need to poll.
                 bufr.pop(bytes_write);
                 bytes_copied += bytes_write;
             }
         }
 
-        // Only block if really necessary
-        if (bytes_read  > 0) p_write_set = nullptr;
-        if (bytes_write > 0) p_read_set  = nullptr;
-
-        if (p_read_set || p_write_set)
+        if (poll_needed)
         {
-            struct timeval* tvp = nullptr;
-            if (check_usec != 0)
+            int poll_return;
+            NEGCHECK("poll", (poll_return = poll(pfd, 2, check_msec)));
+            if (poll_return == 0)
             {
-                tv.tv_sec = 0;
-                tv.tv_usec = check_usec;
-                tvp = &tv;
+                // timeout
             }
-            // Optimization
-            l_continue = continue_flag;
-            int select_return;
-            NEGCHECK("select",
-                (select_return = select(
-                    maxfd, p_read_set, p_write_set, nullptr, tvp)));
+            else
+            {
+                // Some data can be moved
+                read_possible  = (pfd[0].revents & POLLIN );
+                write_possible = (pfd[0].revents & POLLOUT);
+            }
         }
 
 #if (VERBOSE >= 4)
-        if (read_nseg)
+        if ((bytes_read > 0) || (bytes_write > 0))
         {
-            std::cerr << std::setw(7) << std::left << "read" <<
-                std::setw(6) << std::right << bytes_read;
+            if (read_nseg)
+            {
+                std::cerr << std::setw(7) << std::left << "read" <<
+                    std::setw(6) << std::right << bytes_read;
+            }
+            else
+                std::cerr << std::setw(13) << " ";
+            std::cerr << "    ";
+            if (write_nseg)
+            {
+                std::cerr << std::setw(7) << std::left << "write" <<
+                    std::setw(6) << std::right << bytes_write;
+            }
+            else
+                std::cerr << std::setw(13) << "  ";
+            std::cerr << "    ";
+            std::cerr << ((bytes_read  > 0) ? "|" : "x");
+            std::cerr << ((bytes_write > 0) ? "|" : "x");
+            std::cerr << std::endl;
         }
-        else
-            std::cerr << std::setw(13) << " ";
-        std::cerr << "    ";
-        if (write_nseg)
-        {
-            std::cerr << std::setw(7) << std::left << "write" <<
-                std::setw(6) << std::right << bytes_write;
-        }
-        else
-            std::cerr << std::setw(13) << "  ";
-        std::cerr << "    ";
-        std::cerr << (p_read_set  ? "x" : "|");
-        std::cerr << (p_write_set ? "x" : "|");
-        std::cerr << std::endl;
 #endif
 
-        // Only inquire if really necessary
+        // Only inquire  and poll if really necessary
         inquire_needed =  ((bytes_read > 0) || (bytes_write > 0));
+        poll_needed    =  ((bytes_read < 0) && (bytes_write < 0));
 
-    } while ((bytes_read || bytes_write) && l_continue);
+    } while ((bytes_read || bytes_write) && continue_flag);
     // Includes negative values, meaning select() was just called.
 
     copyfd_stats stats;

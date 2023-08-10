@@ -485,21 +485,23 @@ static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
 #if (VERBOSE >= 3)
         std::cerr << my_time() << " starting copy, FD " << firstFD <<
             " to FD " << secondFD << std::endl;
-        auto stats = copyfd_while(firstFD, secondFD, cflag, 500000, 4*1024);
+        auto stats = copyfd_while(firstFD, secondFD, cflag, 500, 4*1024);
         std::cerr << my_time() << " FD " << firstFD << " --> FD " << secondFD <<
             ": " <<
             stats.bytes_copied << " bytes, " <<
             stats.reads << " reads, " <<
             stats.writes << " writes." << std::endl;
 #else
-        copyfd_while(firstFD, secondFD, cflag, 500000, 4*1024);
+        copyfd_while(firstFD, secondFD, cflag, 500, 4*1024);
 #endif
     }
     catch (const CopyFDReadException& r)
     {
+        // I could not find documentation for this condition.
+        // TODO: handle after calling  poll()?
         if (r.errn == ECONNREFUSED)
         {
-            std::cerr << my_time() << " read() : "
+            std::cerr << my_time() << " (reading) : "
                 << strerror(ECONNREFUSED) << std::endl;
             exit(1);
         }
@@ -512,7 +514,7 @@ static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
     {
         if (w.errn == ECONNREFUSED)
         {
-            std::cerr << my_time() << " write() : "
+            std::cerr << my_time() << " (writing) : "
                 << strerror(ECONNREFUSED) << std::endl;
             exit(1);
         }

@@ -5,6 +5,7 @@
 #include <vector>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/poll.h>
 
 class NetutilsException
 {
@@ -44,6 +45,7 @@ public:
     Listener(
         const std::string& hostname, const std::vector<int>& ports,
             int backlog);
+    ~Listener();
     struct SocketInfo
     {
         int port_num;
@@ -51,9 +53,9 @@ public:
     };
     SocketInfo get_client();
 private:
-    std::vector<SocketInfo> socket_infos;
-    int maxfd;
-    fd_set master_set;
+    size_t num_ports;
+    int* listening_ports;
+    pollfd* pfds;
 };
 
 #endif // __NETUTILS_H_

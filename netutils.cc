@@ -110,14 +110,10 @@ int connect(
     {
         if (errno == EINPROGRESS)
         {
-            fd_set set;
-            int maxfd = sockfd + 1;
-            FD_ZERO(&set);
-            FD_SET(sockfd, &set);
-            struct timeval tv;
-            tv.tv_sec = maxwait_s;
-            tv.tv_usec = 0;
-            retval = select(maxfd, nullptr, &set, nullptr, &tv);
+            pollfd pfd;
+            pfd.fd = sockfd;
+            pfd.events = POLLOUT;
+            NEGCHECK("poll", (retval = poll(&pfd, 1, 1000 * maxwait_s)));
             switch (retval)
             {
             case 0:
@@ -125,14 +121,22 @@ int connect(
                 retval = -1;
                 break;
             case 1:
-                // Success
-                retval = 0;
+                // Success, maybe.
+                if (pfd.revents & POLLOUT)
+                {
+                    retval = 0;
+                }
+                else
+                {
+                    std::cerr << "Unexpected revents = " << pfd.revents <<
+                        "from connect()/poll()" << std::endl;
+                    exit(1);
+                }
                 break;
             default:
-                std::string str = "select() : ";
-                str += strerror(errno);
-                NetutilsException r(str);
-                throw(r);
+                std::cerr << "connect() : poll() returns " <<
+                    retval << std::endl;
+                exit(1);
                 break;
             }
         }
@@ -147,6 +151,10 @@ int connect(
 Listener::Listener(const std::string& hostname, const std::vector<int>& ports,
     int backlog)
 {
+    num_ports = ports.size();
+    listening_ports = new int[num_ports];
+    pfds = new pollfd[num_ports];
+    memset(pfds, 0, num_ports * sizeof(pollfd));
     struct sockaddr_in sa;
     memset(&sa, 0, sizeof(sa));
     sa.sin_family = AF_INET;
@@ -167,62 +175,71 @@ Listener::Listener(const std::string& hostname, const std::vector<int>& ports,
             throw(r);
         }
     }
-    FD_ZERO(&master_set);
-    maxfd = 0;
+    int optval = 1;
+    size_t index = 0;
     for (auto port_num : ports)
     {
         int socketFD;
         NEGCHECK(
             "socket", socketFD = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP));
+        pfds[index].fd = socketFD;
+        pfds[index].events = POLLIN;
+        listening_ports[index] = port_num;
+
         set_reuse(socketFD);
         set_flags(socketFD, O_NONBLOCK);
-        int optval = 1;
         NEGCHECK("setsockopt",
             setsockopt(socketFD, SOL_SOCKET, SO_KEEPALIVE, &optval,
             sizeof(optval)));
-
         sa.sin_port = htons ((uint16_t)port_num);
         NEGCHECK("bind",
             bind(socketFD, (struct sockaddr *)(&sa), (socklen_t)sizeof (sa)));
         NEGCHECK("listen",  listen(socketFD, backlog));
-        FD_SET (socketFD, &master_set);
-        maxfd = std::max(maxfd, socketFD);
-        SocketInfo info;
-        info.socketFD = socketFD;
-        info.port_num = port_num;
-        socket_infos.push_back(info);
     }
+}
+
+Listener::~Listener()
+{
+    delete[] pfds;
+    delete[] listening_ports;
 }
 
 Listener::SocketInfo Listener::get_client()
 {
-    fd_set read_set = master_set;
-    NEGCHECK("select", select(maxfd+1, &read_set, nullptr, nullptr, nullptr));
-    SocketInfo listening_info;
-    listening_info.socketFD = -1;
+    int poll_return;
+    size_t index;
     do
     {
-        for (auto info : socket_infos)
+        NEGCHECK("poll", (poll_return = poll(pfds, num_ports, -1)));
+        if (poll_return == 0)
         {
-            if (FD_ISSET(info.socketFD, &read_set))
+            // timeout
+            std::cerr << "Listener::get_client() : poll() returns 0" <<
+                std::endl;
+            exit(1);
+        }
+        for (index = 0 ; index < num_ports ; ++index)
+        {
+            if (pfds[index].revents & POLLIN)
             {
-                listening_info = info;
+                // Debug code
+                std::cerr << "poll()/listen: revents = " <<
+                    pfds[index].revents << std::endl;
                 break;
             }
         }
-    } while (listening_info.socketFD == -1); // Handles spurious connections
-
+    } while (index >= num_ports);
     SocketInfo return_info;
-    return_info.port_num = listening_info.port_num;
+    return_info.port_num = listening_ports[index];
 
     struct sockaddr_in addr;
     socklen_t addrlen = (socklen_t)sizeof(addr);
     NEGCHECK("accept", (return_info.socketFD = accept(
-        listening_info.socketFD, (struct sockaddr*)(&addr), &addrlen)));
+        pfds[index].fd, (struct sockaddr*)(&addr), &addrlen)));
 
 #if (VERBOSE >= 1)
     std::cerr << my_time() << " accepted " << inet_ntoa(addr.sin_addr) <<
-        "@" << listening_info.port_num << std::endl;
+        "@" << return_info.port_num << std::endl;
 #endif
 #if (VERBOSE >= 2)
     std::cerr << my_time() << "     using FD " << return_info.socketFD <<

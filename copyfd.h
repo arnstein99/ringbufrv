@@ -34,6 +34,6 @@ copyfd_stats copyfd(
 
 copyfd_stats copyfd_while(
     int readfd, int writefd,
-    const std::atomic<bool>& continue_flag, long check_usec, size_t buffer_size);
+    const std::atomic<bool>& continue_flag, int check_msec, size_t buffer_size);
 
 #endif // __FD_COPY_H_
