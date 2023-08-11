@@ -5,6 +5,8 @@
 #include <thread>
 #include <chrono>
 using namespace std::chrono_literals;
+#include <cstring>
+#include <strings.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <arpa/inet.h>
