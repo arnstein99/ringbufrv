@@ -5,7 +5,6 @@
 #include <thread>
 #include <chrono>
 using namespace std::chrono_literals;
-#include <string.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -92,7 +91,7 @@ void graceful_close(int socketFD)
 {
     if (shutdown(socketFD, SHUT_RDWR) != 0)
     {
-#if (VERBOSE >= 2)
+#if (VERBOSE >= 3)
         std::cerr << my_time() << " shutdown(" << socketFD << ") : " <<
             strerror(errno) << std::endl;
 #endif
@@ -200,16 +199,20 @@ Listener::Listener(const std::string& hostname, const std::vector<int>& ports,
 
 Listener::~Listener()
 {
+    for (size_t index = 0 ; index < num_ports ; ++index)
+    {
+        close(listening_ports[index]);
+    }
     delete[] pfds;
     delete[] listening_ports;
 }
 
 Listener::SocketInfo Listener::get_client()
 {
-    int poll_return;
-    size_t index;
-    do
+    while (accepted_queue.empty())
     {
+        int poll_return;
+        size_t index;
         NEGCHECK("poll", (poll_return = poll(pfds, num_ports, -1)));
         if (poll_return == 0)
         {
@@ -222,28 +225,26 @@ Listener::SocketInfo Listener::get_client()
         {
             if (pfds[index].revents & POLLIN)
             {
-                // Debug code
-                std::cerr << "poll()/listen: revents = " <<
-                    pfds[index].revents << std::endl;
-                break;
-            }
-        }
-    } while (index >= num_ports);
-    SocketInfo return_info;
-    return_info.port_num = listening_ports[index];
-
-    struct sockaddr_in addr;
-    socklen_t addrlen = (socklen_t)sizeof(addr);
-    NEGCHECK("accept", (return_info.socketFD = accept(
-        pfds[index].fd, (struct sockaddr*)(&addr), &addrlen)));
-
+                SocketInfo new_info;
+                new_info.port_num = listening_ports[index];
+                struct sockaddr_in addr;
+                socklen_t addrlen = (socklen_t)sizeof(addr);
+                NEGCHECK("accept", (new_info.socketFD = accept(
+                    pfds[index].fd, (struct sockaddr*)(&addr), &addrlen)));
+                accepted_queue.push_back(new_info);
 #if (VERBOSE >= 1)
-    std::cerr << my_time() << " accepted " << inet_ntoa(addr.sin_addr) <<
-        "@" << return_info.port_num << std::endl;
+                    std::cerr << my_time() << " accepted " <<
+                        inet_ntoa(addr.sin_addr) << "@" <<
+                        new_info.port_num << std::endl;
 #endif
 #if (VERBOSE >= 2)
-    std::cerr << my_time() << "     using FD " << return_info.socketFD <<
-        std::endl;
+                    std::cerr << my_time() << "     using FD " <<
+                        new_info.socketFD << std::endl;
 #endif
+            }
+        }
+    }
+    SocketInfo return_info(accepted_queue.front());
+    accepted_queue.pop_front();
     return return_info;
 }

@@ -51,7 +51,7 @@ struct ServerInfo
 static Options process_options(int& argc, char**& argv);
 static Uri process_args(int& argc, char**& argv);
 
-static void handle_clients(int sck[2], const Options& opt);
+static void handle_clients(const int sck[2], const Options& opt);
 static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag);
 static void usage_error();
 
@@ -191,9 +191,11 @@ int main(int argc, char* argv[])
                                     if ((errno == ETIMEDOUT) ||
                                         (errno == EINPROGRESS))
                                     {
+#if (VERBOSE >= 2)
                                         std::cerr << my_time() <<
                                             " Note: connect to listener: " <<
                                             strerror(errno) << std::endl;
+#endif
                                         success = false;
                                         break;
                                     }
@@ -411,7 +413,7 @@ void usage_error()
     exit (1);
 }
 
-void handle_clients(int sck[2], const Options& opt)
+void handle_clients(const int sck[2], const Options& opt)
 {
 #if (VERBOSE >= 3)
     std::cerr << my_time() << " Begin copy loop FD " << sck[0] << " <--> FD " <<
@@ -438,36 +440,13 @@ void handle_clients(int sck[2], const Options& opt)
         sock[0] = (sck[0] == -1) ? 1 : sck[0];
         copy(sock[1], sock[0], continue_flag);
     };
-
     std::thread one(proc1);
     std::thread two(proc2);
-
-    // TODO: is there a better way?
-    bool abort = false;
-    auto deadline = std::chrono::system_clock::now() + (opt.max_iotime_s * 1s);
-    bool timeout = ! copy_semaphore.try_acquire_until(deadline);
-    if (timeout)
-    {
-        abort = true;
-    }
-    else
-    {
-        timeout = ! copy_semaphore.try_acquire_until(deadline);
-        if (timeout)
-        {
-            abort = true;
-        }
-    }
-    if (abort)
-    {
-        continue_flag = false;
-#if (VERBOSE >= 3)
-        std::cerr << my_time() << " Note: client (FD " << sck[0] <<
-            " <--> FD " << sck[1] <<") terminated" << std::endl;
-#endif
-    }
+    copy_semaphore.try_acquire_for(opt.max_iotime_s * 1s);
+    continue_flag = false;
     one.join();
     two.join();
+
 #if (VERBOSE >= 3)
     std::cerr << my_time() << " closing FD " << sck[0] <<
         " FD " << sck[1] << std::endl;

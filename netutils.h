@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <list>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/poll.h>
@@ -56,6 +57,7 @@ private:
     size_t num_ports;
     int* listening_ports;
     pollfd* pfds;
+    std::list<SocketInfo> accepted_queue;
 };
 
 #endif // __NETUTILS_H_
