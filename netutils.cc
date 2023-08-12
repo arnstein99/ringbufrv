@@ -18,13 +18,6 @@ void set_flags(int fd, int flags)
     ZEROCHECK("fcntl", fcntl(fd, F_SETFL, oldflags));
 }
 
-void clear_flags(int fd, int flags)
-{
-    int oldflags = fcntl(fd, F_GETFL, 0);
-    oldflags &= (~flags);
-    ZEROCHECK("fcntl", fcntl(fd, F_SETFL, oldflags));
-}
-
 int socket_from_address(
     const std::string& hostname, int port_number,
     unsigned max_connecttime_s)
@@ -81,24 +74,6 @@ void set_reuse(int socket)
     NEGCHECK("setsockopt",
         setsockopt(socket, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)));
 #endif
-}
-void set_nolinger(int socket)
-{
-    struct linger ling {0, 0};
-    NEGCHECK("setsockopt",
-        setsockopt(socket, SOL_SOCKET, SO_LINGER, &ling, sizeof(ling)));
-}
-
-void graceful_close(int socketFD)
-{
-    if (shutdown(socketFD, SHUT_RDWR) != 0)
-    {
-#if (VERBOSE >= 3)
-        std::cerr << my_time() << " shutdown(" << socketFD << ") : " <<
-            strerror(errno) << std::endl;
-#endif
-    }
-    NEGCHECK("close", close(socketFD));
 }
 
 int connect(

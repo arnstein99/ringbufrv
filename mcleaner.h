@@ -4,35 +4,56 @@
 #include <fcntl.h>
 #include <memory>
 #include <semaphore>
+#include <sys/socket.h>
 
 namespace MCleaner
 {
+struct CollisionException
+{
+};
 template<typename _T>
 class CleanerBase
 {
 public:
-    CleanerBase() = delete;
+    CleanerBase()  : _obj(nullptr) { }
+    CleanerBase& operator=(CleanerBase&& other) {
+        if (_obj != nullptr) {
+            CollisionException ce;
+            throw(ce);
+        }
+        _obj = other._obj;
+        other._obj = nullptr;
+        return *this;
+    }
+    CleanerBase(CleanerBase&& other) {
+        _obj = other._obj;
+        other._obj = nullptr;
+    }
+    void disable() {
+        _obj = nullptr;
+    }
     CleanerBase(const CleanerBase&) = delete;
     CleanerBase& operator=(const CleanerBase&) = delete;
-    CleanerBase(CleanerBase&&) = delete;
-    CleanerBase& operator=(CleanerBase&&) = delete;
+
 protected:
-    CleanerBase(_T& obj) : _obj(obj) { }
-    _T& _obj;
+    CleanerBase(_T& obj) : _obj(&obj) { }
+    _T* _obj;
 };
 
-struct FileCloser : public CleanerBase<int>
+struct FileCloser : public CleanerBase<const int>
 {
-    FileCloser(int& i) : CleanerBase<int>(i) { }
-    ~FileCloser() { if (_obj > 2) close(_obj); }
+    FileCloser(const int& i) : CleanerBase<const int>(i) { }
+    ~FileCloser() { if ( _obj && (*_obj > 2)) close(*_obj); }
 };
 
-struct DoubleFileCloser : public CleanerBase<int*>
+struct SocketCloser : public CleanerBase<const int>
 {
-    DoubleFileCloser(int* i) : CleanerBase<int*>(i) { }
-    ~DoubleFileCloser() {
-        if (_obj[0] > 2) close(_obj[0]);
-        if (_obj[1] > 2) close(_obj[1]);
+    SocketCloser(const int& i) : CleanerBase<const int>(i) { }
+    ~SocketCloser() {
+        if ( _obj && (*_obj > 2)) {
+            shutdown(*_obj, SHUT_RDWR);
+            close(*_obj);
+        }
     }
 };
 
@@ -41,7 +62,7 @@ struct SemaphoreReleaser : public CleanerBase< std::counting_semaphore<_d> >
 {
     SemaphoreReleaser(std::counting_semaphore<_d>& cs) :
         CleanerBase< std::counting_semaphore<_d> >(cs) { }
-    ~SemaphoreReleaser() { this->_obj.release(); }
+    ~SemaphoreReleaser() { if (this->_obj) this->_obj->release(); }
 };
 
 }; // namespace MCleaner

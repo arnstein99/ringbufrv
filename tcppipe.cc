@@ -163,15 +163,22 @@ int main(int argc, char* argv[])
             {
                 SemaphoreReleaser clientsToken(clients_limiter);
                 int final_sock[2]{-1, -1};
+                SocketCloser sc0(final_sock[0]);
+                SocketCloser sc1(final_sock[1]);
                 cip_limiter.acquire();
                 bool success = true;
                 {   SemaphoreReleaser cip_token(cip_limiter);
                     for (size_t index = 0 ; index < 2 ; ++index)
                     {
-                        if (!server_info[index].listening())
+                        if (server_info[index].listening())
                         {
-                            if (fi[index].port_num > 1)
+                            final_sock[index] = fi[index].socketFD;
+                        }
+                        else
+                        {
+                            if (fi[index].port_num != -1)
                             {
+                                // Not stdin or stdout
                                 try
                                 {
                                     final_sock[index] =
@@ -206,17 +213,15 @@ int main(int argc, char* argv[])
                                 }
                             }
                         }
-                        else
-                        {
-                            final_sock[index] = fi[index].socketFD;
-                        }
                     }
                 }
                 if (success)
                 {
-                    handle_clients(final_sock, options);
                     // handle_clients() will close both sockets at a
                     // future time.
+                    sc0.disable();
+                    sc1.disable();
+                    handle_clients(final_sock, options);
                 }
                 else
                 {
@@ -224,8 +229,6 @@ int main(int argc, char* argv[])
                     std::cerr << my_time() << " early closing " <<
                         final_sock[0] << " " << final_sock[1] << std::endl;
 #endif
-                    if (final_sock[0] > 2) graceful_close(final_sock[0]);
-                    if (final_sock[1] > 2) graceful_close(final_sock[1]);
                 }
 #if (VERBOSE >= 3)
                 std::cerr << my_time() << " End copy loop FD " <<
@@ -419,6 +422,8 @@ void handle_clients(const int sck[2], const Options& opt)
     std::cerr << my_time() << " Begin copy loop FD " << sck[0] << " <--> FD " <<
         sck[1] << std::endl;
 #endif
+    SocketCloser sc0(sck[0]);
+    SocketCloser sc1(sck[1]);
     std::atomic<bool> continue_flag = true;
     std::counting_semaphore<2> copy_semaphore(2);
     copy_semaphore.acquire();
@@ -451,8 +456,6 @@ void handle_clients(const int sck[2], const Options& opt)
     std::cerr << my_time() << " closing FD " << sck[0] <<
         " FD " << sck[1] << std::endl;
 #endif
-    if (sck[0] > 2) graceful_close(sck[0]);
-    if (sck[1] > 2) graceful_close(sck[1]);
 }
 
 static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)

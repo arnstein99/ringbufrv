@@ -17,16 +17,9 @@ public:
 
 // Operates on an active file descriptor.
 void set_flags(int fd, int flags);
-void clear_flags(int fd, int flags);
 
 // Sets SO_REUSEADDR and SO_REUSEPORT
 void set_reuse(int socket);
-
-// Sets SO_LINGER to {0, 0}
-void set_nolinger(int socket);
-
-// Calls shutdown() and close()
-void graceful_close(int socketFD);
 
 // Returns connected socket. Return value -1 indicates that
 // connect() was attempted, and failed.
