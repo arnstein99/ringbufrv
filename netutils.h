@@ -38,14 +38,19 @@ class Listener
 public:
     Listener(
         const std::string& hostname, const std::vector<int>& ports,
-            int backlog);
+        int backlog);
     ~Listener();
+    Listener(Listener&& other);
+    Listener& operator=(Listener&& other);
     struct SocketInfo
     {
         int port_num;
         int socketFD;
     };
     SocketInfo get_client();
+    Listener() = delete;
+    Listener(const Listener&) = delete;
+    Listener& operator=(const Listener&) = delete;
 private:
     size_t num_ports;
     int* listening_ports;

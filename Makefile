@@ -16,17 +16,33 @@ endif
 CCFLAGS += -std=c++2a -Wall
 LDLIBS += -lpthread
 LINK.o = c++ $(LDFLAGS)
-COMPILE.cc = c++ -c $(CPPFLAGS) $(CCFLAGS)
 
 all: testring tcpcat tcppipe
 
 testring: testring.o miscutils.o
-tcpcat: tcpcat.o copyfd.o miscutils.o netutils.o
-tcppipe: tcppipe.o copyfd.o miscutils.o netutils.o
+tcpcat: tcpcat.o commonutils.o copyfd.o miscutils.o netutils.o
+tcppipe: tcppipe.o commonutils.o copyfd.o miscutils.o netutils.o
 
-copyfd.o: ringbufr.h ringbufr.tcc
-testring.o: miscutils.h ringbufr.h ringbufr.tcc
-tcpcat.o: copyfd.h miscutils.h netutils.h
-tcppipe.o: copyfd.h miscutils.h netutils.h mcleaner.h
-netutils.o: netutils.h miscutils.h ringbufr.h
-miscutils.o: miscutils.h
+# GNU boilerplate {
+
+SRCS := commonutils.cc copyfd.cc miscutils.cc netutils.cc tcpcat.cc \
+    tcppipe.cc testring.cc
+
+DEPDIR := .deps
+DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.d
+
+COMPILE.cc = c++ $(DEPFLAGS) $(CCFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -c
+
+%.o : %.cc
+%.o : %.cc $(DEPDIR)/%.d | $(DEPDIR)
+	$(COMPILE.cc) $(OUTPUT_OPTION) $<
+
+$(DEPDIR): ; @mkdir -p $@
+
+DEPFILES := $(SRCS:%.cc=$(DEPDIR)/%.d)
+$(DEPFILES):
+
+# This should remain at the end of the file
+include $(wildcard $(DEPFILES))
+
+# } GNU boilerplate

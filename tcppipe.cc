@@ -1,21 +1,24 @@
-#include <iostream>
-#include <semaphore>
-#include <limits>
-#include <thread>
+#include "commonutils.h"
+#include "copyfd.h"
+#include "mcleaner.h"
+#include "miscutils.h"
+#include "netutils.h"
+using namespace MCleaner;
+
 #include <chrono>
 using namespace std::chrono_literals;
 #include <cstring>
-#include <unistd.h>
+#include <iostream>
+#include <limits>
+#include <semaphore>
+#include <thread>
+
 #include <fcntl.h>
-#include <signal.h>
 #include <netdb.h>
-#include <sys/socket.h>
+#include <signal.h>
+#include <unistd.h>
 #include <arpa/inet.h>
-#include "copyfd.h"
-#include "miscutils.h"
-#include "netutils.h"
-#include "mcleaner.h"
-using namespace MCleaner;
+#include <sys/socket.h>
 
 // Tuning (compile time)
 constexpr std::ptrdiff_t default_max_cip{10};
@@ -31,29 +34,10 @@ struct Options
     unsigned max_iotime_s;
     unsigned max_connecttime_s;
 };
-struct Uri
-{
-    bool listening;
-    std::vector<int> ports;  // -1 means stdin or stdout
-    std::string hostname;    // Not always defined
-};
-
-struct ServerInfo
-{
-    ServerInfo() : port_num(-1), listener(nullptr) { }
-    ~ServerInfo() { if (listener) delete listener; }
-    inline bool listening() const { return (listener != nullptr); }
-    std::string hostname;    // Not always defined
-    int port_num;            // Not defined if listening
-    Listener* listener;
-};
-
 static Options process_options(int& argc, char**& argv);
-static Uri process_args(int& argc, char**& argv);
-
-static void handle_clients(const int sck[2], const Options& opt);
+static void handle_clients(const int sck[2], unsigned max_iotime_s);
 static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag);
-static void usage_error();
+void usage_error();  // Note: will be exported for use in commonutils.
 
 int main(int argc, char* argv[])
 {
@@ -221,7 +205,7 @@ int main(int argc, char* argv[])
                     // future time.
                     sc0.disable();
                     sc1.disable();
-                    handle_clients(final_sock, options);
+                    handle_clients(final_sock, options.max_iotime_s);
                 }
                 else
                 {
@@ -253,7 +237,7 @@ int main(int argc, char* argv[])
     return 0;
 }
 
-static Options process_options(int& argc, char**& argv)
+Options process_options(int& argc, char**& argv)
 {
     if (argc < 2) usage_error();
     Options options;
@@ -317,87 +301,6 @@ static Options process_options(int& argc, char**& argv)
     return options;
 }
 
-static Uri process_args(int& argc, char**& argv)
-// Group can be one of
-//     -stdio
-//     -listen <port,port,...>
-//     -listen <address>:<port,port,...>
-//     -connect <hostname> <port>
-{
-    Uri uri;
-
-    if (argc < 1) usage_error();
-    const char* option = argv[0];
-    ++argv;
-    --argc;
-
-    if (strcmp(option, "-stdio") == 0)
-    {
-        uri.ports.push_back(-1);
-        uri.listening = false;
-    }
-    else if (strcmp(option, "-listen") == 0)
-    {
-        uri.listening = true;
-        if (argc < 1) usage_error();
-        const char* value = argv[0];
-        ++argv;
-        --argc;
-        auto vec = mstrtok(value, ':');
-        std::vector<std::string> vec2;
-        switch (vec.size())
-        {
-        // TODO: eliminate redundancy in the next two cases
-        case 1:
-            uri.hostname = "";
-            vec2 = mstrtok(vec[0], ',');
-            if (vec2.size() == 0) usage_error();
-            for (auto value2 : vec2)
-            {
-                uri.ports.push_back(mstoi(value2));
-            }
-            break;
-        case 2:
-            uri.hostname = vec[0];
-            vec2 = mstrtok(vec[1], ',');
-            if (vec2.size() == 0) usage_error();
-            for (auto value2 : vec2)
-            {
-                uri.ports.push_back(mstoi(value2));
-            }
-            break;
-        default:
-            usage_error();
-            break;
-        }
-    }
-    else if (strcmp(option, "-connect") == 0)
-    {
-        uri.listening = false;
-        if (argc < 1) usage_error();
-        const char* value = argv[0];
-        uri.hostname = value;
-        --argc;
-        ++argv;
-        auto vec = mstrtok(value, ':');
-        switch (vec.size())
-        {
-        case 2:
-            uri.hostname = vec[0];
-            uri.ports.push_back(mstoi(vec[1]));
-            break;
-        default:
-            usage_error();
-            break;
-        }
-    }
-    else
-    {
-        usage_error();
-    }
-    return uri;
-}
-
 void usage_error()
 {
     std::cerr << "Usage:" << std::endl;
@@ -416,7 +319,7 @@ void usage_error()
     exit (1);
 }
 
-void handle_clients(const int sck[2], const Options& opt)
+void handle_clients(const int sck[2], unsigned max_iotime_s)
 {
 #if (VERBOSE >= 3)
     std::cerr << my_time() << " Begin copy loop FD " << sck[0] << " <--> FD " <<
@@ -447,7 +350,7 @@ void handle_clients(const int sck[2], const Options& opt)
     };
     std::thread one(proc1);
     std::thread two(proc2);
-    copy_semaphore.try_acquire_for(opt.max_iotime_s * 1s);
+    copy_semaphore.try_acquire_for(max_iotime_s * 1s);
     continue_flag = false;
     one.join();
     two.join();
@@ -458,7 +361,7 @@ void handle_clients(const int sck[2], const Options& opt)
 #endif
 }
 
-static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
+void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
 {
     set_flags(firstFD , O_NONBLOCK);
     set_flags(secondFD, O_NONBLOCK);

@@ -171,7 +171,24 @@ Listener::Listener(const std::string& hostname, const std::vector<int>& ports,
         NEGCHECK("bind",
             bind(socketFD, (struct sockaddr *)(&sa), (socklen_t)sizeof (sa)));
         NEGCHECK("listen",  listen(socketFD, backlog));
+        ++index;
     }
+}
+Listener::Listener(Listener&& other) :
+    num_ports(other.num_ports), listening_ports(other.listening_ports),
+    pfds(other.pfds), accepted_queue(std::move(other.accepted_queue))
+{
+    other.listening_ports = nullptr;
+    other.pfds = nullptr;
+}
+Listener& Listener::operator=(Listener&& other)
+{
+    num_ports = other.num_ports;
+    listening_ports = other.listening_ports;
+    other.listening_ports = nullptr;
+    pfds = other.pfds;
+    other.pfds = nullptr;
+    return *this;
 }
 
 Listener::~Listener()
