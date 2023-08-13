@@ -53,13 +53,10 @@ int socket_from_address(
         close(socketFD);
         return -1;
     }
-#if (VERBOSE >= 1)
-    std::cerr << my_time() << " connected " <<
-        inet_ntoa(serveraddr.sin_addr) << ":" << port_number << std::endl;
-#endif
 #if (VERBOSE >= 2)
-        std::cerr << my_time() << "     using FD " << socketFD <<
-            std::endl;
+    std::cerr << my_time() << " connected " <<
+        inet_ntoa(serveraddr.sin_addr) << ":" << port_number <<
+        " using FD " << socketFD << std::endl;
 #endif
 
     return socketFD;
@@ -228,12 +225,11 @@ Listener::SocketInfo Listener::get_client()
                 accepted_queue.push_back(new_info);
 #if (VERBOSE >= 1)
                     std::cerr << my_time() << " accepted " <<
-                        inet_ntoa(addr.sin_addr) << "@" <<
-                        new_info.port_num << std::endl;
-#endif
+                        inet_ntoa(addr.sin_addr) << "@" << new_info.port_num <<
 #if (VERBOSE >= 2)
-                    std::cerr << my_time() << "     using FD " <<
-                        new_info.socketFD << std::endl;
+                        " using FD " << new_info.socketFD <<
+#endif
+                        std::endl;
 #endif
             }
         }

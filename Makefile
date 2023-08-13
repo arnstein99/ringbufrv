@@ -17,16 +17,20 @@ CCFLAGS += -std=c++2a -Wall
 LDLIBS += -lpthread
 LINK.o = c++ $(LDFLAGS)
 
-all: testring tcpcat tcppipe
+SRCS := commonutils.cc copyfd.cc miscutils.cc netutils.cc tcpcat.cc \
+    tcppipe.cc testring.cc
+PROGS := testring tcpcat tcppipe
+
+all : $(PROGS)
+clean :
+	$(RM) $(PROGS) $(SRCS:%.cc=%.o) $(SRCS:%.cc=$(DEPDIR)/%.d)
+.PHONY: all clean
 
 testring: testring.o miscutils.o
 tcpcat: tcpcat.o commonutils.o copyfd.o miscutils.o netutils.o
 tcppipe: tcppipe.o commonutils.o copyfd.o miscutils.o netutils.o
 
 # GNU boilerplate {
-
-SRCS := commonutils.cc copyfd.cc miscutils.cc netutils.cc tcpcat.cc \
-    tcppipe.cc testring.cc
 
 DEPDIR := .deps
 DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.d
