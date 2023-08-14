@@ -180,7 +180,7 @@ void responder(
                     if ((errno == ETIMEDOUT) ||
                         (errno == EINPROGRESS))
                     {
-#if (VERBOSE >= 2)
+#if (VERBOSE >= 3)
                         std::cerr << my_time() <<
                             " Note: connect to listener: " <<
                             strerror(errno) << std::endl;
@@ -206,12 +206,12 @@ void responder(
     }
     else
     {
-#if (VERBOSE >= 2)
+#if (VERBOSE >= 3)
         std::cerr << my_time() << " early closing " <<
             final_sock[0] << " " << final_sock[1] << std::endl;
 #endif
     }
-#if (VERBOSE >= 3)
+#if (VERBOSE >= 2)
     std::cerr << my_time() << " End copy loop FD " <<
         final_sock[0] << " <--> FD " << final_sock[1] << std::endl;
 #endif
@@ -219,7 +219,7 @@ void responder(
 
 void handle_clients(const int sck[2])
 {
-#if (VERBOSE >= 3)
+#if (VERBOSE >= 2)
     std::cerr << my_time() << " Begin copy loop FD " << sck[0] << " <--> FD " <<
         sck[1] << std::endl;
 #endif

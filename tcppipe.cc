@@ -190,7 +190,7 @@ int main(int argc, char* argv[])
                                     if ((errno == ETIMEDOUT) ||
                                         (errno == EINPROGRESS))
                                     {
-#if (VERBOSE >= 2)
+#if (VERBOSE >= 3)
                                         std::cerr << my_time() << " #" <<
                                             client_num <<
                                             ": Note: connect to listener: " <<
@@ -219,13 +219,13 @@ int main(int argc, char* argv[])
                 }
                 else
                 {
-#if (VERBOSE >= 2)
+#if (VERBOSE >= 3)
                     std::cerr << my_time() << " #" << client_num <<
                         ": early closing " << final_sock[0] << " " <<
                         final_sock[1] << std::endl;
 #endif
                 }
-#if (VERBOSE >= 3)
+#if (VERBOSE >= 2)
                 std::cerr << my_time() << " #" << client_num <<
                     ": End copy loop FD " << final_sock[0] << " <--> FD " <<
                     final_sock[1] << std::endl;
@@ -243,7 +243,7 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-#if (VERBOSE >= 3)
+#if (VERBOSE >= 2)
     std::cerr << my_time() << " Normal exit" << std::endl;
 #endif
     return 0;
@@ -334,7 +334,7 @@ void usage_error()
 void handle_clients(
     unsigned client_num, const int sck[2], unsigned max_iotime_s)
 {
-#if (VERBOSE >= 3)
+#if (VERBOSE >= 2)
     std::cerr << my_time() << " #" << client_num << ": Begin copy loop FD " <<
         sck[0] << " <--> FD " << sck[1] << std::endl;
 #endif

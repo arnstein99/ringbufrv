@@ -59,7 +59,7 @@ int socket_from_address(
     {
         std::cerr << " #" << client_num << ": ";
     }
-    std::cerr << " connected " << inet_ntoa(serveraddr.sin_addr) << ":" <<
+    std::cerr << "connected " << inet_ntoa(serveraddr.sin_addr) << ":" <<
         port_number << " using FD " << socketFD << std::endl;
 #endif
 
@@ -233,7 +233,7 @@ Listener::SocketInfo Listener::get_client(unsigned client_num)
                     {
                         std::cerr << " #" << client_num << ": ";
                     }
-                    std::cerr << " accepted " << inet_ntoa(addr.sin_addr) <<
+                    std::cerr << "accepted " << inet_ntoa(addr.sin_addr) <<
                         "@" << new_info.port_num <<
 #if (VERBOSE >= 2)
                         " using FD " << new_info.socketFD <<
