@@ -89,7 +89,7 @@ int main (int argc, char* argv[])
     Listener::SocketInfo final_info[2];
     auto accept2 = [&server_info, &final_info] (int index) {
         final_info[index] =
-            server_info[index].listener->get_client();
+            server_info[index].listener->get_client(0);
     };
     // Special processing for double listen
     if (server_info[0].listening() && server_info[1].listening())
@@ -165,7 +165,7 @@ void responder(
                 {
                     final_sock[index] =
                         socket_from_address(
-                            server_info[index].hostname,
+                            0, server_info[index].hostname,
                             final_info[index].port_num,
                             std::numeric_limits<unsigned>::max());
                 }

@@ -24,7 +24,7 @@ void set_reuse(int socket);
 // Returns connected socket. Return value -1 indicates that
 // connect() was attempted, and failed.
 int socket_from_address(
-    const std::string& hostname, int port_number,
+    unsigned client_num, const std::string& hostname, int port_number,
     unsigned max_connect_time_s = 300);
 
 // connect(2) wih selectable timeout
@@ -47,7 +47,7 @@ public:
         int port_num;
         int socketFD;
     };
-    SocketInfo get_client();
+    SocketInfo get_client(unsigned client_num);
     Listener() = delete;
     Listener(const Listener&) = delete;
     Listener& operator=(const Listener&) = delete;

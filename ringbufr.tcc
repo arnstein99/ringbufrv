@@ -193,16 +193,14 @@ size_t RingbufR<_T>::size() const
         // Wrap-around is in effect
         return (_ring_end - _pop_next) + (_push_next - _ring_start);
     }
-    else if (_push_next == _pop_next)
+    if (_push_next == _pop_next)
     {
         // Ring buffer is full
         return (_ring_end - _ring_start);
     }
-    else // (_push_next > _pop_next)
-    {
-        // Wrap-around is not in effect
-        return (_push_next - _pop_next);
-    }
+    // (_push_next > _pop_next)
+    // Wrap-around is not in effect
+    return (_push_next - _pop_next);
 }
 
 template<typename _T>

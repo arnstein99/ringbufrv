@@ -19,7 +19,7 @@ void set_flags(int fd, int flags)
 }
 
 int socket_from_address(
-    const std::string& hostname, int port_number,
+    unsigned client_num, const std::string& hostname, int port_number,
     unsigned max_connecttime_s)
 {
     // Create socket
@@ -54,9 +54,13 @@ int socket_from_address(
         return -1;
     }
 #if (VERBOSE >= 2)
-    std::cerr << my_time() << " connected " <<
-        inet_ntoa(serveraddr.sin_addr) << ":" << port_number <<
-        " using FD " << socketFD << std::endl;
+    std::cerr << my_time();
+    if (client_num)
+    {
+        std::cerr << " #" << client_num << ": ";
+    }
+    std::cerr << " connected " << inet_ntoa(serveraddr.sin_addr) << ":" <<
+        port_number << " using FD " << socketFD << std::endl;
 #endif
 
     return socketFD;
@@ -198,7 +202,7 @@ Listener::~Listener()
     delete[] listening_ports;
 }
 
-Listener::SocketInfo Listener::get_client()
+Listener::SocketInfo Listener::get_client(unsigned client_num)
 {
     while (accepted_queue.empty())
     {
@@ -224,8 +228,13 @@ Listener::SocketInfo Listener::get_client()
                     pfds[index].fd, (struct sockaddr*)(&addr), &addrlen)));
                 accepted_queue.push_back(new_info);
 #if (VERBOSE >= 1)
-                    std::cerr << my_time() << " accepted " <<
-                        inet_ntoa(addr.sin_addr) << "@" << new_info.port_num <<
+                    std::cerr << my_time();
+                    if (client_num)
+                    {
+                        std::cerr << " #" << client_num << ": ";
+                    }
+                    std::cerr << " accepted " << inet_ntoa(addr.sin_addr) <<
+                        "@" << new_info.port_num <<
 #if (VERBOSE >= 2)
                         " using FD " << new_info.socketFD <<
 #endif

@@ -35,8 +35,11 @@ struct Options
     unsigned max_connecttime_s;
 };
 static Options process_options(int& argc, char**& argv);
-static void handle_clients(const int sck[2], unsigned max_iotime_s);
-static void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag);
+static void handle_clients(
+    unsigned client_num, const int sck[2], unsigned max_iotime_s);
+static void copy(
+    unsigned client_num, int firstFD, int secondFD,
+    const std::atomic<bool>& cflag);
 void usage_error();  // Note: will be exported for use in commonutils.
 
 int main(int argc, char* argv[])
@@ -105,14 +108,16 @@ int main(int argc, char* argv[])
     std::counting_semaphore<semaphore_max_max>
         clients_limiter{options.max_clients};
     std::counting_semaphore<semaphore_max_max> cip_limiter{options.max_cip};
+    unsigned client_num{0};
     // Loop over clients
     do
     {
         clients_limiter.acquire();
+        ++client_num;
         Listener::SocketInfo final_info[2];
-        auto accept2 = [&server_info, &final_info] (int index) {
+        auto accept2 = [client_num, &server_info, &final_info] (int index) {
             final_info[index] =
-                server_info[index].listener->get_client();
+                server_info[index].listener->get_client(client_num);
         };
         // Special processing for double listen
         if (server_info[0].listening() && server_info[1].listening())
@@ -143,7 +148,8 @@ int main(int argc, char* argv[])
 
         ByValue<Listener::SocketInfo,2> fi(final_info);
         auto responder =
-            [&clients_limiter, &cip_limiter, &server_info, fi, &options] ()
+            [client_num, &clients_limiter, &cip_limiter, &server_info, fi,
+                &options] ()
             {
                 SemaphoreReleaser clientsToken(clients_limiter);
                 int final_sock[2]{-1, -1};
@@ -167,13 +173,15 @@ int main(int argc, char* argv[])
                                 {
                                     final_sock[index] =
                                         socket_from_address(
+                                            client_num,
                                             server_info[index].hostname,
                                             fi[index].port_num,
                                             options.max_connecttime_s);
                                 }
                                 catch (const NetutilsException& r)
                                 {
-                                    std::cerr << my_time() << " " <<
+                                    std::cerr << my_time() << " #" <<
+                                        client_num << ": " <<
                                         r.strng << std::endl;
                                     exit(1);
                                 }
@@ -183,8 +191,9 @@ int main(int argc, char* argv[])
                                         (errno == EINPROGRESS))
                                     {
 #if (VERBOSE >= 2)
-                                        std::cerr << my_time() <<
-                                            " Note: connect to listener: " <<
+                                        std::cerr << my_time() << " #" <<
+                                            client_num <<
+                                            ": Note: connect to listener: " <<
                                             strerror(errno) << std::endl;
 #endif
                                         success = false;
@@ -205,18 +214,21 @@ int main(int argc, char* argv[])
                     // future time.
                     sc0.disable();
                     sc1.disable();
-                    handle_clients(final_sock, options.max_iotime_s);
+                    handle_clients(
+                        client_num, final_sock, options.max_iotime_s);
                 }
                 else
                 {
 #if (VERBOSE >= 2)
-                    std::cerr << my_time() << " early closing " <<
-                        final_sock[0] << " " << final_sock[1] << std::endl;
+                    std::cerr << my_time() << " #" << client_num <<
+                        ": early closing " << final_sock[0] << " " <<
+                        final_sock[1] << std::endl;
 #endif
                 }
 #if (VERBOSE >= 3)
-                std::cerr << my_time() << " End copy loop FD " <<
-                    final_sock[0] << " <--> FD " << final_sock[1] << std::endl;
+                std::cerr << my_time() << " #" << client_num <<
+                    ": End copy loop FD " << final_sock[0] << " <--> FD " <<
+                    final_sock[1] << std::endl;
 #endif
             };
         last_thread = std::thread(responder);
@@ -319,11 +331,12 @@ void usage_error()
     exit (1);
 }
 
-void handle_clients(const int sck[2], unsigned max_iotime_s)
+void handle_clients(
+    unsigned client_num, const int sck[2], unsigned max_iotime_s)
 {
 #if (VERBOSE >= 3)
-    std::cerr << my_time() << " Begin copy loop FD " << sck[0] << " <--> FD " <<
-        sck[1] << std::endl;
+    std::cerr << my_time() << " #" << client_num << ": Begin copy loop FD " <<
+        sck[0] << " <--> FD " << sck[1] << std::endl;
 #endif
     SocketCloser sc0(sck[0]);
     SocketCloser sc1(sck[1]);
@@ -332,21 +345,21 @@ void handle_clients(const int sck[2], unsigned max_iotime_s)
     copy_semaphore.acquire();
     copy_semaphore.acquire();
 
-    auto proc1 = [sck, &continue_flag, &copy_semaphore] ()
+    auto proc1 = [client_num, sck, &continue_flag, &copy_semaphore] ()
     {
         SemaphoreReleaser token(copy_semaphore);
         int sock[2];
         sock[0] = (sck[0] == -1) ? 0 : sck[0];
         sock[1] = (sck[1] == -1) ? 1 : sck[1];
-        copy(sock[0], sock[1], continue_flag);
+        copy(client_num, sock[0], sock[1], continue_flag);
     };
-    auto proc2 = [sck, &continue_flag, &copy_semaphore] ()
+    auto proc2 = [client_num, sck, &continue_flag, &copy_semaphore] ()
     {
         SemaphoreReleaser token(copy_semaphore);
         int sock[2];
         sock[1] = (sck[1] == -1) ? 0 : sck[1];
         sock[0] = (sck[0] == -1) ? 1 : sck[0];
-        copy(sock[1], sock[0], continue_flag);
+        copy(client_num, sock[1], sock[0], continue_flag);
     };
     std::thread one(proc1);
     std::thread two(proc2);
@@ -356,25 +369,27 @@ void handle_clients(const int sck[2], unsigned max_iotime_s)
     two.join();
 
 #if (VERBOSE >= 3)
-    std::cerr << my_time() << " closing FD " << sck[0] <<
+    std::cerr << my_time()<< " #" << client_num  << ": closing FD " << sck[0] <<
         " FD " << sck[1] << std::endl;
 #endif
 }
 
-void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
+void copy(
+    unsigned client_num, int firstFD, int secondFD,
+    const std::atomic<bool>& cflag)
 {
     set_flags(firstFD , O_NONBLOCK);
     set_flags(secondFD, O_NONBLOCK);
     try
     {
 #if (VERBOSE >= 3)
-        std::cerr << my_time() << " starting copy, FD " << firstFD <<
-            " to FD " << secondFD << std::endl;
+        std::cerr << my_time() << " #" << client_num <<
+            ": starting copy, FD " << firstFD << " to FD " << secondFD <<
+            std::endl;
         auto stats = copyfd_while(firstFD, secondFD, cflag, 500, 4*1024);
-        std::cerr << my_time() << " FD " << firstFD << " --> FD " << secondFD <<
-            ": " <<
-            stats.bytes_copied << " bytes, " <<
-            stats.reads << " reads, " <<
+        std::cerr << my_time() << " #" << client_num << ": FD " << firstFD <<
+            " --> FD " << secondFD << ": " <<
+            stats.bytes_copied << " bytes, " << stats.reads << " reads, " <<
             stats.writes << " writes." << std::endl;
 #else
         copyfd_while(firstFD, secondFD, cflag, 500, 4*1024);
@@ -386,26 +401,28 @@ void copy(int firstFD, int secondFD, const std::atomic<bool>& cflag)
         // TODO: handle after calling  poll()?
         if (r.errn == ECONNREFUSED)
         {
-            std::cerr << my_time() << " (reading) : "
+            std::cerr << my_time() << " #" << client_num << ": (reading) : "
                 << strerror(ECONNREFUSED) << std::endl;
             exit(1);
         }
 #if (VERBOSE >= 3)
-        std::cerr << my_time() << " Read failure after " << r.byte_count <<
-            " bytes: " << strerror(r.errn) << std::endl;
+        std::cerr << my_time() << " #" << client_num <<
+            ": Read failure after " << r.byte_count << " bytes: " <<
+            strerror(r.errn) << std::endl;
 #endif
     }
     catch (const CopyFDWriteException& w)
     {
         if (w.errn == ECONNREFUSED)
         {
-            std::cerr << my_time() << " (writing) : "
+            std::cerr << my_time() << " #" << client_num << ": (writing) : "
                 << strerror(ECONNREFUSED) << std::endl;
             exit(1);
         }
 #if (VERBOSE >= 3)
-        std::cerr << my_time() << " Write failure after " << w.byte_count <<
-            " bytes: " << strerror(w.errn) << std::endl;
+        std::cerr << my_time() << " #" << client_num <<
+            ": Write failure after " << w.byte_count << " bytes: " <<
+            strerror(w.errn) << std::endl;
 #endif
     }
 }
