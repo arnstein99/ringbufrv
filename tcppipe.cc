@@ -180,8 +180,7 @@ int main(int argc, char* argv[])
                                 }
                                 catch (const NetutilsException& r)
                                 {
-                                    std::cerr << my_time() << " #" <<
-                                        client_num << ": " <<
+                                    std::cerr << my_prefix(client_num) <<
                                         r.strng << std::endl;
                                     exit(1);
                                 }
@@ -191,9 +190,8 @@ int main(int argc, char* argv[])
                                         (errno == EINPROGRESS))
                                     {
 #if (VERBOSE >= 3)
-                                        std::cerr << my_time() << " #" <<
-                                            client_num <<
-                                            ": Note: connect to listener: " <<
+                                        std::cerr << my_prefix(client_num) <<
+                                            "Note: connect to listener: " <<
                                             strerror(errno) << std::endl;
 #endif
                                         success = false;
@@ -220,14 +218,14 @@ int main(int argc, char* argv[])
                 else
                 {
 #if (VERBOSE >= 3)
-                    std::cerr << my_time() << " #" << client_num <<
-                        ": early closing " << final_sock[0] << " " <<
+                    std::cerr << my_prefix(client_num) <<
+                        "early closing " << final_sock[0] << " " <<
                         final_sock[1] << std::endl;
 #endif
                 }
 #if (VERBOSE >= 2)
-                std::cerr << my_time() << " #" << client_num <<
-                    ": End copy loop FD " << final_sock[0] << " <--> FD " <<
+                std::cerr << my_prefix(client_num) <<
+                    "End copy loop FD " << final_sock[0] << " <--> FD " <<
                     final_sock[1] << std::endl;
 #endif
             };
@@ -334,9 +332,12 @@ void usage_error()
 void handle_clients(
     unsigned client_num, const int sck[2], unsigned max_iotime_s)
 {
+#if (VERBOSE >= 1)
+    my_prefix mp(client_num);
+#endif
 #if (VERBOSE >= 2)
-    std::cerr << my_time() << " #" << client_num << ": Begin copy loop FD " <<
-        sck[0] << " <--> FD " << sck[1] << std::endl;
+    std::cerr << mp << "Begin copy loop FD " << sck[0] <<
+        " <--> FD " << sck[1] << std::endl;
 #endif
     SocketCloser sc0(sck[0]);
     SocketCloser sc1(sck[1]);
@@ -369,8 +370,7 @@ void handle_clients(
     two.join();
 
 #if (VERBOSE >= 3)
-    std::cerr << my_time()<< " #" << client_num  << ": closing FD " << sck[0] <<
-        " FD " << sck[1] << std::endl;
+    std::cerr << mp << "closing FD " << sck[0] << " FD " << sck[1] << std::endl;
 #endif
 }
 
@@ -378,17 +378,18 @@ void copy(
     unsigned client_num, int firstFD, int secondFD,
     const std::atomic<bool>& cflag)
 {
+#if (VERBOSE >= 1)
+    my_prefix mp(client_num);
+#endif
     set_flags(firstFD , O_NONBLOCK);
     set_flags(secondFD, O_NONBLOCK);
     try
     {
 #if (VERBOSE >= 3)
-        std::cerr << my_time() << " #" << client_num <<
-            ": starting copy, FD " << firstFD << " to FD " << secondFD <<
-            std::endl;
+        std::cerr << mp << "starting copy, FD " << firstFD << " to FD " <<
+            secondFD << std::endl;
         auto stats = copyfd_while(firstFD, secondFD, cflag, 500, 4*1024);
-        std::cerr << my_time() << " #" << client_num << ": FD " << firstFD <<
-            " --> FD " << secondFD << ": " <<
+        std::cerr << mp << "FD " << firstFD << " --> FD " << secondFD << ": " <<
             stats.bytes_copied << " bytes, " << stats.reads << " reads, " <<
             stats.writes << " writes." << std::endl;
 #else
@@ -401,28 +402,26 @@ void copy(
         // TODO: handle after calling  poll()?
         if (r.errn == ECONNREFUSED)
         {
-            std::cerr << my_time() << " #" << client_num << ": (reading) : "
-                << strerror(ECONNREFUSED) << std::endl;
+            std::cerr << mp << "(reading) : " << strerror(ECONNREFUSED) <<
+                std::endl;
             exit(1);
         }
 #if (VERBOSE >= 3)
-        std::cerr << my_time() << " #" << client_num <<
-            ": Read failure after " << r.byte_count << " bytes: " <<
-            strerror(r.errn) << std::endl;
+        std::cerr << mp << "Read failure after " << r.byte_count <<
+            " bytes: " << strerror(r.errn) << std::endl;
 #endif
     }
     catch (const CopyFDWriteException& w)
     {
         if (w.errn == ECONNREFUSED)
         {
-            std::cerr << my_time() << " #" << client_num << ": (writing) : "
-                << strerror(ECONNREFUSED) << std::endl;
+            std::cerr << mp << "(writing) : " << strerror(ECONNREFUSED) <<
+                std::endl;
             exit(1);
         }
 #if (VERBOSE >= 3)
-        std::cerr << my_time() << " #" << client_num <<
-            ": Write failure after " << w.byte_count << " bytes: " <<
-            strerror(w.errn) << std::endl;
+        std::cerr << mp << "Write failure after " << w.byte_count <<
+            " bytes: " << strerror(w.errn) << std::endl;
 #endif
     }
 }

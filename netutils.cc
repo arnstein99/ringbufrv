@@ -54,12 +54,8 @@ int socket_from_address(
         return -1;
     }
 #if (VERBOSE >= 2)
-    std::cerr << my_time();
-    if (client_num)
-    {
-        std::cerr << " #" << client_num << ": ";
-    }
-    std::cerr << "connected " << inet_ntoa(serveraddr.sin_addr) << ":" <<
+    std::cerr << my_prefix(client_num) << "connected " <<
+        inet_ntoa(serveraddr.sin_addr) << ":" <<
         port_number << " using FD " << socketFD << std::endl;
 #endif
 
@@ -228,12 +224,8 @@ Listener::SocketInfo Listener::get_client(unsigned client_num)
                     pfds[index].fd, (struct sockaddr*)(&addr), &addrlen)));
                 accepted_queue.push_back(new_info);
 #if (VERBOSE >= 1)
-                    std::cerr << my_time();
-                    if (client_num)
-                    {
-                        std::cerr << " #" << client_num << ": ";
-                    }
-                    std::cerr << "accepted " << inet_ntoa(addr.sin_addr) <<
+                    std::cerr << my_prefix(client_num) << "accepted " <<
+                        inet_ntoa(addr.sin_addr) <<
                         "@" << new_info.port_num <<
 #if (VERBOSE >= 2)
                         " using FD " << new_info.socketFD <<

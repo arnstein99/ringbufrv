@@ -55,6 +55,15 @@ private:
 int mstoi(const std::string& str, bool allow_zero=false);
 
 std::string my_time(void);
+class my_prefix
+{
+public:
+    my_prefix(unsigned n=0) : num(n) { }
+    friend std::ostream& operator<<(std::ostream&, const my_prefix&);
+private:
+    unsigned num;
+};
+std::ostream& operator<<(std::ostream& ost, const my_prefix& mp);
 
 bool represents_counting(const std::string& input);
 

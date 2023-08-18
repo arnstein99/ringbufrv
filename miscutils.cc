@@ -63,6 +63,23 @@ std::string my_time(void)
     return std::string(buf);
 }
 
+std::ostream& operator<<(std::ostream& ost, const my_prefix& mp)
+{
+    ost << my_time();
+    if (mp.num)
+    {
+        static std::string hash(" #");
+        static std::string colon(": ");
+        ost << hash << mp.num << colon;
+    }
+    else
+    {
+        static std::string space(" ");
+        ost << space;
+    }
+    return ost;
+}
+
 bool represents_counting(const std::string& input)
 {
     if (input.empty()) return false;
