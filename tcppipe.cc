@@ -402,8 +402,8 @@ void copy(
         // TODO: handle after calling  poll()?
         if (r.errn == ECONNREFUSED)
         {
-            std::cerr << mp << "(reading) : " << strerror(ECONNREFUSED) <<
-                std::endl;
+            std::cerr << my_prefix(client_num) << "(reading) : " <<
+                strerror(ECONNREFUSED) << std::endl;
             exit(1);
         }
 #if (VERBOSE >= 3)
@@ -415,8 +415,8 @@ void copy(
     {
         if (w.errn == ECONNREFUSED)
         {
-            std::cerr << mp << "(writing) : " << strerror(ECONNREFUSED) <<
-                std::endl;
+            std::cerr << my_prefix(client_num) << "(writing) : " <<
+                strerror(ECONNREFUSED) << std::endl;
             exit(1);
         }
 #if (VERBOSE >= 3)
