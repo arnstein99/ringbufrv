@@ -208,10 +208,6 @@ int main(int argc, char* argv[])
                 }
                 if (success)
                 {
-                    // handle_clients() will close both sockets at a
-                    // future time.
-                    sc0.disable();
-                    sc1.disable();
                     handle_clients(
                         client_num, final_sock, options.max_iotime_s);
                 }
@@ -339,8 +335,6 @@ void handle_clients(
     std::cerr << mp << "Begin copy loop FD " << sck[0] <<
         " <--> FD " << sck[1] << std::endl;
 #endif
-    SocketCloser sc0(sck[0]);
-    SocketCloser sc1(sck[1]);
     std::atomic<bool> continue_flag = true;
     std::counting_semaphore<2> copy_semaphore(2);
     copy_semaphore.acquire();
