@@ -338,13 +338,23 @@ void handle_clients(
     try
     {
 #if (VERBOSE >= 3)
-        std::cerr << mp << "starting copy, FD " << sck[0] << " to FD " <<
-            sck[1] << std::endl;
         copyfd_stats stats[2];
 #else
         copyfd_stats* stats(nullptr);
 #endif
         copyfd2(sck[0], sck[1], 4*1024, 1000*max_iotime_s, stats);
+#if (VERBOSE >= 3)
+        std::cerr << mp << "FD " << sck[0] << " --> FD " << sck[1] <<
+            ": " <<
+            stats[0].bytes_copied << " bytes, " <<
+            stats[0].reads << " reads, " <<
+            stats[0].writes << " writes." << std::endl;
+        std::cerr << mp << "FD " << sck[1] << " --> FD " << sck[0] <<
+            ": " <<
+            stats[1].bytes_copied << " bytes, " <<
+            stats[1].reads << " reads, " <<
+            stats[1].writes << " writes." << std::endl;
+#endif
     }
     catch (const CopyFDReadException& r)
     {
