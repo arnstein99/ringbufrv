@@ -1,4 +1,4 @@
-// Implementation of RingbufR
+// Implementation of RingbufR and RingbufRbase
 #ifndef __RINGBUFR_TCC
 #define __RINGBUFR_TCC
 
@@ -7,9 +7,27 @@
 #include <string.h>
 
 template<typename _T>
-RingbufR<_T>::RingbufR (size_t capacity)
-    : _capacity(capacity),
-      _ring_start(new _T[capacity]),
+RingbufR<_T>::RingbufR(size_t capacity)
+    : RingbufRbase<_T>(capacity, new _T[capacity])
+{
+}
+
+template<typename _T>
+RingbufR<_T>::~RingbufR()
+{
+    delete[] RingbufRbase<_T>::_ring_start;
+}
+
+template<typename _T>
+void RingbufR<_T>::validate(const _T* /*start*/, size_t /*count*/)
+{
+    // The user can override as desired.
+}
+
+template<typename _T>
+RingbufRbase<_T>::RingbufRbase (size_t capacity, _T* store)
+    : _ring_start(store),
+      _capacity(capacity),
       _ring_end(_ring_start + capacity)
 {
     _push_next  = _ring_start;
@@ -20,13 +38,7 @@ RingbufR<_T>::RingbufR (size_t capacity)
 }
 
 template<typename _T>
-RingbufR<_T>::~RingbufR()
-{
-    delete[] _ring_start;
-}
-
-template<typename _T>
-size_t RingbufR<_T>::pushInquire(
+size_t RingbufRbase<_T>::pushInquire(
         size_t& available1, _T*& start1, size_t& available2, _T*& start2) const
 {
     size_t nseg;
@@ -84,7 +96,7 @@ size_t RingbufR<_T>::pushInquire(
 }
 
 template<typename _T>
-void RingbufR<_T>::push(size_t increment)
+void RingbufRbase<_T>::push(size_t increment)
 {
     if (increment == 0) return;
 
@@ -121,7 +133,7 @@ void RingbufR<_T>::push(size_t increment)
 }
 
 template<typename _T>
-size_t RingbufR<_T>::popInquire(
+size_t RingbufRbase<_T>::popInquire(
         size_t& available1, _T*& start1, size_t& available2, _T*& start2) const
 {
     size_t nseg;
@@ -157,7 +169,7 @@ size_t RingbufR<_T>::popInquire(
 }
 
 template<typename _T>
-void RingbufR<_T>::pop(size_t increment)
+void RingbufRbase<_T>::pop(size_t increment)
 {
     if (increment == 0) return;
 
@@ -185,7 +197,7 @@ void RingbufR<_T>::pop(size_t increment)
 }
 
 template<typename _T>
-size_t RingbufR<_T>::size() const
+size_t RingbufRbase<_T>::size() const
 {
     if (_empty) return 0;
     if (_push_next < _pop_next)
@@ -204,19 +216,19 @@ size_t RingbufR<_T>::size() const
 }
 
 template<typename _T>
-const _T* RingbufR<_T>::ring_start() const
+const _T* RingbufRbase<_T>::ring_start() const
 {
     return _ring_start;
 }
 
 template<typename _T>
-const _T* RingbufR<_T>::ring_end() const
+const _T* RingbufRbase<_T>::ring_end() const
 {
     return _ring_end;
 }
 
 template<typename _T>
-typename RingbufR<_T>::debugState RingbufR<_T>::getState() const
+typename RingbufRbase<_T>::debugState RingbufRbase<_T>::getState() const
 {
     debugState state;
     state.pop_next = _pop_next - _ring_start;
@@ -228,7 +240,7 @@ typename RingbufR<_T>::debugState RingbufR<_T>::getState() const
 }
 
 template<typename _T>
-void RingbufR<_T>::validate(const _T* /*start*/, size_t /*count*/)
+void RingbufRbase<_T>::validatebase(const _T* /*start*/, size_t /*count*/)
 {
     // The user can override as desired.
 }

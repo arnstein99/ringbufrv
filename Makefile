@@ -12,12 +12,15 @@ endif
 ifneq ($(strip $(VERBOSE)),)
     CPPFLAGS += -DVERBOSE=$(VERBOSE)
 endif
+ifneq ($(strip $(BUFFER_SIZE)),)
+    CPPFLAGS += -DBUFFER_SIZE=$(BUFFER_SIZE)
+endif
 
 CCFLAGS += -std=c++2a -Wall
 LDLIBS += -lpthread
 LINK.o = c++ $(LDFLAGS)
 
-SRCS := commonutils.cc copyfd.cc miscutils.cc netutils.cc tcpcat.cc \
+SRCS := commonutils.cc miscutils.cc netutils.cc tcpcat.cc \
     tcppipe.cc testring.cc
 PROGS := testring tcpcat tcppipe
 
@@ -27,8 +30,8 @@ clean :
 .PHONY: all clean
 
 testring: testring.o miscutils.o
-tcpcat: tcpcat.o commonutils.o copyfd.o miscutils.o netutils.o
-tcppipe: tcppipe.o commonutils.o copyfd.o miscutils.o netutils.o
+tcpcat: tcpcat.o commonutils.o miscutils.o netutils.o
+tcppipe: tcppipe.o commonutils.o miscutils.o netutils.o
 
 # GNU boilerplate {
 

@@ -21,6 +21,9 @@ using namespace std::chrono_literals;
 #include <sys/socket.h>
 
 // Tuning (compile time)
+#ifndef BUFFER_SIZE
+#define BUFFER_SIZE (4*1024)
+#endif
 constexpr std::ptrdiff_t default_max_cip{10};
 constexpr std::ptrdiff_t default_max_clients{32};
 constexpr unsigned default_max_connecttime_s{300};
@@ -342,7 +345,7 @@ void handle_clients(
 #else
         copyfd_stats* stats(nullptr);
 #endif
-        copyfd2(sck[0], sck[1], 4*1024, 1000*max_iotime_s, stats);
+        copyfd2<BUFFER_SIZE>(sck[0], sck[1], 1000*max_iotime_s, stats);
 #if (VERBOSE >= 3)
         std::cerr << mp << "FD " << sck[0] << " --> FD " << sck[1] <<
             ": " <<
@@ -388,3 +391,5 @@ void handle_clients(
     std::cerr << mp << "closing FD " << sck[0] << " FD " << sck[1] << std::endl;
 #endif
 }
+
+#include "copyfd.tcc"

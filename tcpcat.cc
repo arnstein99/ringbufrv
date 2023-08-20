@@ -16,6 +16,9 @@ using namespace MCleaner;
 #include <sys/socket.h>
 
 // Tuning (compile time)
+#ifndef BUFFER_SIZE
+#define BUFFER_SIZE (4*1024)
+#endif
 constexpr int listen_backlog{10};
 
 void usage_error();  // Note: will be exported for use in commonutils.
@@ -246,14 +249,14 @@ void copy(int firstFD, int secondFD)
 #if (VERBOSE >= 3)
         std::cerr << my_time() << " starting copy, FD " << firstFD <<
             " to FD " << secondFD << std::endl;
-        auto stats = copyfd(firstFD, secondFD, 4*1024);
+        auto stats = copyfd<BUFFER_SIZE>(firstFD, secondFD);
         std::cerr << my_time() << " FD " << firstFD << " --> FD " << secondFD <<
             ": " <<
             stats.bytes_copied << " bytes, " <<
             stats.reads << " reads, " <<
             stats.writes << " writes." << std::endl;
 #else
-        copyfd(firstFD, secondFD, 4*1024);
+        copyfd<BUFFER_SIZE>(firstFD, secondFD);
 #endif
     }
     catch (const CopyFDReadException& r)
@@ -285,3 +288,5 @@ void copy(int firstFD, int secondFD)
 #endif
     }
 }
+
+#include "copyfd.tcc"

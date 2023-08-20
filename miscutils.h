@@ -59,9 +59,8 @@ class my_prefix
 {
 public:
     my_prefix(unsigned n=0) : num(n) { }
-    friend std::ostream& operator<<(std::ostream&, const my_prefix&);
+    const unsigned num;
 private:
-    unsigned num;
 };
 std::ostream& operator<<(std::ostream& ost, const my_prefix& mp);
 

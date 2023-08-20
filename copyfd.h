@@ -1,5 +1,6 @@
 #ifndef __FD_COPY_H_
 #define __FD_COPY_H_
+
 #include <unistd.h>
 #include <atomic>
 
@@ -29,10 +30,11 @@ struct copyfd_stats
     size_t bytes_copied;
 };
 
-copyfd_stats copyfd(int readfd, int writefd, size_t buffer_size);
+template<size_t STORE_SIZE>
+copyfd_stats copyfd(int readfd, int writefd);
 
+template<size_t STORE_SIZE>
 void copyfd2(
-    int readfd, int writefd, size_t buffer_size, unsigned max_msec,
-    copyfd_stats stats[2]=nullptr);
+    int readfd, int writefd, unsigned max_msec, copyfd_stats stats[2]=nullptr);
 
 #endif // __FD_COPY_H_
