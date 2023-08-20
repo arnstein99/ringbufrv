@@ -37,9 +37,6 @@ struct Options
 static Options process_options(int& argc, char**& argv);
 static void handle_clients(
     unsigned client_num, const int sck[2], unsigned max_iotime_s);
-static void copy(
-    unsigned client_num, int firstFD, int secondFD,
-    const std::atomic<bool>& cflag);
 void usage_error();  // Note: will be exported for use in commonutils.
 
 int main(int argc, char* argv[])
@@ -335,60 +332,19 @@ void handle_clients(
     std::cerr << mp << "Begin copy loop FD " << sck[0] <<
         " <--> FD " << sck[1] << std::endl;
 #endif
-    std::atomic<bool> continue_flag = true;
-    std::counting_semaphore<2> copy_semaphore(2);
-    copy_semaphore.acquire();
-    copy_semaphore.acquire();
 
-    auto proc1 = [client_num, sck, &continue_flag, &copy_semaphore] ()
-    {
-        SemaphoreReleaser token(copy_semaphore);
-        int sock[2];
-        sock[0] = (sck[0] == -1) ? 0 : sck[0];
-        sock[1] = (sck[1] == -1) ? 1 : sck[1];
-        copy(client_num, sock[0], sock[1], continue_flag);
-    };
-    auto proc2 = [client_num, sck, &continue_flag, &copy_semaphore] ()
-    {
-        SemaphoreReleaser token(copy_semaphore);
-        int sock[2];
-        sock[1] = (sck[1] == -1) ? 0 : sck[1];
-        sock[0] = (sck[0] == -1) ? 1 : sck[0];
-        copy(client_num, sock[1], sock[0], continue_flag);
-    };
-    std::thread one(proc1);
-    std::thread two(proc2);
-    copy_semaphore.try_acquire_for(max_iotime_s * 1s);
-    continue_flag = false;
-    one.join();
-    two.join();
-
-#if (VERBOSE >= 3)
-    std::cerr << mp << "closing FD " << sck[0] << " FD " << sck[1] << std::endl;
-#endif
-}
-
-void copy(
-    unsigned client_num, int firstFD, int secondFD,
-    const std::atomic<bool>& cflag)
-{
-#if (VERBOSE >= 1)
-    my_prefix mp(client_num);
-#endif
-    set_flags(firstFD , O_NONBLOCK);
-    set_flags(secondFD, O_NONBLOCK);
+    set_flags(sck[0] , O_NONBLOCK);
+    set_flags(sck[1], O_NONBLOCK);
     try
     {
 #if (VERBOSE >= 3)
-        std::cerr << mp << "starting copy, FD " << firstFD << " to FD " <<
-            secondFD << std::endl;
-        auto stats = copyfd_while(firstFD, secondFD, cflag, 500, 4*1024);
-        std::cerr << mp << "FD " << firstFD << " --> FD " << secondFD << ": " <<
-            stats.bytes_copied << " bytes, " << stats.reads << " reads, " <<
-            stats.writes << " writes." << std::endl;
+        std::cerr << mp << "starting copy, FD " << sck[0] << " to FD " <<
+            sck[1] << std::endl;
+        copyfd_stats stats[2];
 #else
-        copyfd_while(firstFD, secondFD, cflag, 500, 4*1024);
+        copyfd_stats* stats(nullptr);
 #endif
+        copyfd2(sck[0], sck[1], 4*1024, 1000*max_iotime_s, stats);
     }
     catch (const CopyFDReadException& r)
     {
@@ -418,4 +374,7 @@ void copy(
             " bytes: " << strerror(w.errn) << std::endl;
 #endif
     }
+#if (VERBOSE >= 3)
+    std::cerr << mp << "closing FD " << sck[0] << " FD " << sck[1] << std::endl;
+#endif
 }
