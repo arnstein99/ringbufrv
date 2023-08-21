@@ -339,9 +339,9 @@ void handle_clients(
     try
     {
 #if (VERBOSE >= 3)
-        copyfd_stats stats[2];
+        iopackage_stats stats[2];
 #else
-        copyfd_stats* stats(nullptr);
+        iopackage_stats* stats(nullptr);
 #endif
         copyfd2<BUFFER_SIZE>(sck[0], sck[1], max_iotime_ms, stats);
 #if (VERBOSE >= 3)
@@ -357,7 +357,7 @@ void handle_clients(
             stats[1].writes << " writes." << std::endl;
 #endif
     }
-    catch (const CopyFDReadException& r)
+    catch (const IOPackageReadException& r)
     {
         // I could not find documentation for this condition.
         // TODO: handle after calling  poll()?
@@ -372,7 +372,7 @@ void handle_clients(
             " bytes: " << strerror(r.errn) << std::endl;
 #endif
     }
-    catch (const CopyFDWriteException& w)
+    catch (const IOPackageWriteException& w)
     {
         if (w.errn == ECONNREFUSED)
         {

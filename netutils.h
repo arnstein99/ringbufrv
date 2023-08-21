@@ -1,10 +1,10 @@
 #ifndef __NETUTILS_H_
 #define __NETUTILS_H_
 
+#include <cstddef>
+#include <list>
 #include <string>
 #include <vector>
-#include <list>
-#include <unistd.h>
 #include <sys/socket.h>
 #include <sys/poll.h>
 

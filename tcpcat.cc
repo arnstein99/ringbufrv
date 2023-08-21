@@ -259,7 +259,7 @@ void copy(int firstFD, int secondFD)
         copyfd<BUFFER_SIZE>(firstFD, secondFD);
 #endif
     }
-    catch (const CopyFDReadException& r)
+    catch (const IOPackageReadException& r)
     {
         // I could not find documentation for this condition.
         // TODO: handle after calling  poll()?
@@ -274,7 +274,7 @@ void copy(int firstFD, int secondFD)
             " bytes: " << strerror(r.errn) << std::endl;
 #endif
     }
-    catch (const CopyFDWriteException& w)
+    catch (const IOPackageWriteException& w)
     {
         if (w.errn == ECONNREFUSED)
         {
