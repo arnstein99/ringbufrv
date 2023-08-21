@@ -35,6 +35,6 @@ copyfd_stats copyfd(int readfd, int writefd);
 
 template<size_t STORE_SIZE>
 void copyfd2(
-    int readfd, int writefd, unsigned max_msec, copyfd_stats stats[2]=nullptr);
+    int readfd, int writefd, int max_msec, copyfd_stats stats[2]=nullptr);
 
 #endif // __FD_COPY_H_

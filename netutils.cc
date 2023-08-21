@@ -20,7 +20,7 @@ void set_flags(int fd, int flags)
 
 int socket_from_address(
     unsigned client_num, const std::string& hostname, int port_number,
-    unsigned max_connecttime_s)
+    int max_connecttime_ms)
 {
     // Create socket
     int socketFD;
@@ -48,7 +48,7 @@ int socket_from_address(
     // Connect to server
     if (connect(
         socketFD, (struct sockaddr*)(&serveraddr), sizeof(serveraddr),
-        max_connecttime_s) < 0)
+        max_connecttime_ms) < 0)
     {
         close(socketFD);
         return -1;
@@ -74,8 +74,7 @@ void set_reuse(int socket)
 }
 
 int connect(
-    int sockfd, const struct sockaddr *addr, socklen_t addrlen,
-    unsigned maxwait_s)
+    int sockfd, const struct sockaddr *addr, socklen_t addrlen, int maxwait_ms)
 {
     set_flags(sockfd, O_NONBLOCK);
     int retval = connect(sockfd, addr, addrlen);
@@ -86,7 +85,7 @@ int connect(
             pollfd pfd;
             pfd.fd = sockfd;
             pfd.events = POLLOUT;
-            NEGCHECK("poll", (retval = poll(&pfd, 1, 1000 * maxwait_s)));
+            NEGCHECK("poll", (retval = poll(&pfd, 1, maxwait_ms)));
             switch (retval)
             {
             case 0:

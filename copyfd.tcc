@@ -216,7 +216,7 @@ copyfd_stats copyfd(int readfd, int writefd)
 
 template<size_t STORE_SIZE>
 void copyfd2(
-    int readfd, int writefd, unsigned max_msec, copyfd_stats stats[2])
+    int readfd, int writefd, int max_msec, copyfd_stats stats[2])
 {
     pollfd pfd[4];  // Forward read and write, then backward read and write.
     memset(pfd, 0, 4 * sizeof(pollfd));
@@ -225,9 +225,18 @@ void copyfd2(
     pfd[2].fd = writefd;
     pfd[3].fd = readfd;
     IOPackage<STORE_SIZE> forward(readfd, writefd);
-    IOPackage<STORE_SIZE> backward(readfd, writefd);
+    IOPackage<STORE_SIZE> backward(writefd, readfd);
 
-    auto deadline = system_clock::now() + max_msec * 1ms;
+    int dur;
+    time_point<system_clock> deadline;
+    if (max_msec == -1)
+    {
+        dur = -1;
+    }
+    else
+    {
+        deadline = system_clock::now() + max_msec * 1ms;
+    }
 
     bool cycle_return = forward.cycle(pfd) && backward.cycle(pfd+2);
     while (cycle_return)
@@ -235,9 +244,12 @@ void copyfd2(
         if ((pfd[0].events || pfd[1].events) &&
             (pfd[2].events || pfd[3].events))
         {
-            auto now = system_clock::now();
-            if (now >= deadline) break;
-            auto dur = duration_cast<milliseconds>(deadline - now).count();
+            if (max_msec != -1)
+            {
+                time_point<system_clock> now = system_clock::now();
+                if (now >= deadline) break;
+                dur = duration_cast<milliseconds>(deadline - now).count();
+            }
             int poll_return;
             NEGCHECK("poll", (poll_return = poll(pfd, 4, dur)));
             // TODO: examine pfd[*].revents ?

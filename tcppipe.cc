@@ -9,7 +9,6 @@ using namespace MCleaner;
 using namespace std::chrono_literals;
 #include <cstring>
 #include <iostream>
-#include <limits>
 #include <semaphore>
 #include <thread>
 
@@ -26,7 +25,7 @@ using namespace std::chrono_literals;
 #endif
 constexpr std::ptrdiff_t default_max_cip{10};
 constexpr std::ptrdiff_t default_max_clients{32};
-constexpr unsigned default_max_connecttime_s{300};
+constexpr int default_max_connecttime_ms{300*1000};
 constexpr std::ptrdiff_t semaphore_max_max{256};
 constexpr int listen_backlog{10};
 
@@ -34,12 +33,12 @@ struct Options
 {
     std::ptrdiff_t max_cip;
     std::ptrdiff_t max_clients;
-    unsigned max_iotime_s;
-    unsigned max_connecttime_s;
+    int max_iotime_ms;
+    int max_connecttime_ms;
 };
 static Options process_options(int& argc, char**& argv);
 static void handle_clients(
-    unsigned client_num, const int sck[2], unsigned max_iotime_s);
+    unsigned client_num, const int sck[2], int max_iotime_ms);
 void usage_error();  // Note: will be exported for use in commonutils.
 
 int main(int argc, char* argv[])
@@ -176,7 +175,7 @@ int main(int argc, char* argv[])
                                             client_num,
                                             server_info[index].hostname,
                                             fi[index].port_num,
-                                            options.max_connecttime_s);
+                                            options.max_connecttime_ms);
                                 }
                                 catch (const NetutilsException& r)
                                 {
@@ -209,7 +208,7 @@ int main(int argc, char* argv[])
                 if (success)
                 {
                     handle_clients(
-                        client_num, final_sock, options.max_iotime_s);
+                        client_num, final_sock, options.max_iotime_ms);
                 }
                 else
                 {
@@ -249,8 +248,8 @@ Options process_options(int& argc, char**& argv)
     Options options;
     options.max_cip = default_max_cip;
     options.max_clients = default_max_clients;
-    options.max_iotime_s = std::numeric_limits<unsigned>::max();
-    options.max_connecttime_s = default_max_connecttime_s;
+    options.max_iotime_ms = -1;
+    options.max_connecttime_ms = default_max_connecttime_ms;
 
     while (argc > 2)
     {
@@ -294,8 +293,9 @@ Options process_options(int& argc, char**& argv)
         {
             if (argc < 1) usage_error();
             const char* value = argv[1];
-            options.max_iotime_s = mstoi(value, true);
-            options.max_connecttime_s = options.max_iotime_s;
+            auto msec = 1000 * mstoi(value, true);
+            options.max_iotime_ms = msec;
+            options.max_connecttime_ms = msec;
             argv += 2;
             argc -=2;
         }
@@ -326,7 +326,7 @@ void usage_error()
 }
 
 void handle_clients(
-    unsigned client_num, const int sck[2], unsigned max_iotime_s)
+    unsigned client_num, const int sck[2], int max_iotime_ms)
 {
 #if (VERBOSE >= 1)
     my_prefix mp(client_num);
@@ -345,7 +345,7 @@ void handle_clients(
 #else
         copyfd_stats* stats(nullptr);
 #endif
-        copyfd2<BUFFER_SIZE>(sck[0], sck[1], 1000*max_iotime_s, stats);
+        copyfd2<BUFFER_SIZE>(sck[0], sck[1], max_iotime_ms, stats);
 #if (VERBOSE >= 3)
         std::cerr << mp << "FD " << sck[0] << " --> FD " << sck[1] <<
             ": " <<

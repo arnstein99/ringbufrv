@@ -25,12 +25,11 @@ void set_reuse(int socket);
 // connect() was attempted, and failed.
 int socket_from_address(
     unsigned client_num, const std::string& hostname, int port_number,
-    unsigned max_connect_time_s = 300);
+    int max_connect_time_ms = 300*1000);
 
 // connect(2) wih selectable timeout
 int connect(
-    int sockfd, const struct sockaddr *addr, socklen_t addrlen,
-    unsigned maxwait_s);
+    int sockfd, const struct sockaddr *addr, socklen_t addrlen, int maxwait_ms);
 
 // listen(2) on a collection of ports
 class Listener
