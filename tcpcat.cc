@@ -216,14 +216,14 @@ void responder(
     }
 #if (VERBOSE >= 2)
     std::cerr << my_time() << " End copy loop FD " <<
-        final_sock[0] << " <--> FD " << final_sock[1] << std::endl;
+        final_sock[0] << " --> FD " << final_sock[1] << std::endl;
 #endif
 }
 
 void handle_clients(const int sck[2])
 {
 #if (VERBOSE >= 2)
-    std::cerr << my_time() << " Begin copy loop FD " << sck[0] << " <--> FD " <<
+    std::cerr << my_time() << " Begin copy loop FD " << sck[0] << " --> FD " <<
         sck[1] << std::endl;
 #endif
     SocketCloser sc0(sck[0]);
