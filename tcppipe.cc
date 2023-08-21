@@ -66,6 +66,7 @@ int main(int argc, char* argv[])
         }
         else
         {
+            // Programming note: a value of -1 indicates stdin or stdout.
             server_info[index].port_num = uri[index].ports[0];
         }
         server_info[index].hostname = std::move(uri[index].hostname);
@@ -138,9 +139,7 @@ int main(int argc, char* argv[])
                 }
                 else
                 {
-                    final_info[index].port_num =
-                        server_info[index].port_num;
-                    final_info[index].socketFD = -1;
+                    final_info[index].port_num = server_info[index].port_num;
                 }
             }
         }
@@ -176,30 +175,31 @@ int main(int argc, char* argv[])
                                             server_info[index].hostname,
                                             fi[index].port_num,
                                             options.max_connecttime_ms);
+                                    if (final_sock[index] == -1)
+                                    {
+                                        if ((errno == ETIMEDOUT) ||
+                                            (errno == EINPROGRESS))
+                                        {
+#if (VERBOSE >= 3)
+                                            std::cerr <<
+                                                my_prefix(client_num) <<
+                                                "Note: connect to listener: " <<
+                                                strerror(errno) << std::endl;
+#endif
+                                            success = false;
+                                            break;
+                                        }
+                                        else
+                                        {
+                                            errorexit("connect to remote");
+                                        }
+                                    }
                                 }
                                 catch (const NetutilsException& r)
                                 {
                                     std::cerr << my_prefix(client_num) <<
                                         r.strng << std::endl;
                                     exit(1);
-                                }
-                                if (final_sock[index] == -1)
-                                {
-                                    if ((errno == ETIMEDOUT) ||
-                                        (errno == EINPROGRESS))
-                                    {
-#if (VERBOSE >= 3)
-                                        std::cerr << my_prefix(client_num) <<
-                                            "Note: connect to listener: " <<
-                                            strerror(errno) << std::endl;
-#endif
-                                        success = false;
-                                        break;
-                                    }
-                                    else
-                                    {
-                                        errorexit("connect to remote");
-                                    }
                                 }
                             }
                         }
@@ -336,8 +336,6 @@ void handle_clients(
         " <--> FD " << sck[1] << std::endl;
 #endif
 
-    set_flags(sck[0] , O_NONBLOCK);
-    set_flags(sck[1], O_NONBLOCK);
     try
     {
 #if (VERBOSE >= 3)

@@ -1,22 +1,15 @@
 #include "netutils.h"
 #include "miscutils.h"
 
-#include <iostream>
-#include <thread>
 #include <chrono>
 using namespace std::chrono_literals;
 #include <cstring>
-#include <strings.h>
+#include <iostream>
+#include <thread>
 #include <fcntl.h>
 #include <netdb.h>
+#include <strings.h>
 #include <arpa/inet.h>
-
-void set_flags(int fd, int flags)
-{
-    int oldflags = fcntl(fd, F_GETFL, 0);
-    oldflags |= flags;
-    ZEROCHECK("fcntl", fcntl(fd, F_SETFL, oldflags));
-}
 
 int socket_from_address(
     unsigned client_num, const std::string& hostname, int port_number,

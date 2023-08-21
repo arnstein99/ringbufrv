@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 
+// Operates on an active file descriptor.
+void set_flags(int fd, int flags);
+
 void errorexit(const char* message);
 #define ZEROCHECK(message,retval) \
     do { \

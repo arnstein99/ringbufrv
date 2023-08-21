@@ -13,7 +13,7 @@ struct ServerInfo
     ~ServerInfo() { if (listener) delete listener; }
     inline bool listening() const { return (listener != nullptr); }
     std::string hostname;    // Not always defined
-    int port_num;            // Not defined if listening
+    int port_num;            // Not defined if listening. -1 indicates stdio.
     Listener* listener;
 };
 

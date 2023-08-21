@@ -15,9 +15,6 @@ public:
     std::string strng;
 };
 
-// Operates on an active file descriptor.
-void set_flags(int fd, int flags);
-
 // Sets SO_REUSEADDR and SO_REUSEPORT
 void set_reuse(int socket);
 

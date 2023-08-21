@@ -2,6 +2,14 @@
 #include <iostream>
 #include <sstream>
 #include <cstring>
+#include <fcntl.h>
+
+void set_flags(int fd, int flags)
+{
+    int oldflags = fcntl(fd, F_GETFL, 0);
+    oldflags |= flags;
+    ZEROCHECK("fcntl", fcntl(fd, F_SETFL, oldflags));
+}
 
 void errorexit(const char* message)
 {

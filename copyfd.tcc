@@ -216,16 +216,44 @@ copyfd_stats copyfd(int readfd, int writefd)
 
 template<size_t STORE_SIZE>
 void copyfd2(
-    int readfd, int writefd, int max_msec, copyfd_stats stats[2])
+    int leftfd, int rightfd, int max_msec, copyfd_stats stats[2])
 {
     pollfd pfd[4];  // Forward read and write, then backward read and write.
     memset(pfd, 0, 4 * sizeof(pollfd));
-    pfd[0].fd = readfd;
-    pfd[1].fd = writefd;
-    pfd[2].fd = writefd;
-    pfd[3].fd = readfd;
-    IOPackage<STORE_SIZE> forward(readfd, writefd);
-    IOPackage<STORE_SIZE> backward(writefd, readfd);
+    // ugh
+    int leftfd_forward, leftfd_backward, rightfd_forward, rightfd_backward;
+    if (leftfd == -1)
+    {
+        leftfd_forward  = 0;
+        leftfd_backward = 1;
+    }
+    else
+    {
+        leftfd_forward  = leftfd;
+        leftfd_backward = leftfd;
+    }
+    if (rightfd == -1)
+    {
+        rightfd_forward  = 1;
+        rightfd_backward = 0;
+    }
+    else
+    {
+        rightfd_forward  = rightfd;
+        rightfd_backward = rightfd;
+    }
+
+    set_flags(leftfd_forward  , O_NONBLOCK);
+    set_flags(leftfd_backward , O_NONBLOCK);
+    set_flags(rightfd_forward , O_NONBLOCK);
+    set_flags(rightfd_backward, O_NONBLOCK);
+
+    pfd[0].fd = leftfd_forward;
+    pfd[1].fd = rightfd_forward;
+    pfd[2].fd = rightfd_backward;
+    pfd[3].fd = leftfd_backward;
+    IOPackage<STORE_SIZE> forward(leftfd_forward, rightfd_forward);
+    IOPackage<STORE_SIZE> backward(rightfd_backward, leftfd_backward);
 
     int dur;
     time_point<system_clock> deadline;
