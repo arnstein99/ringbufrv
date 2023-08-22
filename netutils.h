@@ -8,9 +8,8 @@
 #include <sys/socket.h>
 #include <sys/poll.h>
 
-class NetutilsException
+struct NetutilsException
 {
-public:
     NetutilsException(const std::string& str) : strng(str) { }
     std::string strng;
 };

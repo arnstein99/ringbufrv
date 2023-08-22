@@ -63,7 +63,7 @@ class RingbufR : public RingbufRbase<_T>
 {
 public:
     RingbufR (size_t capacity);
-    virtual ~RingbufR ();
+    virtual ~RingbufR();
     // For debugging
     static void validate(const _T* start, size_t count);
 };

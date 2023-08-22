@@ -25,8 +25,9 @@ public:
         other._obj = nullptr;
         return *this;
     }
-    CleanerBase(CleanerBase&& other) {
-        _obj = other._obj;
+    CleanerBase(CleanerBase&& other)
+        : _obj(other._obj)
+    {
         other._obj = nullptr;
     }
     void disable() {

@@ -1,10 +1,3 @@
-#ifndef __IOPACKAGE_TCC_
-#define __IOPACKAGE_TCC_
-
-IOPackageBase::IOPackageBase(
-        int rdfd, int wrfd, size_t store_size, unsigned char* store)
-    : readfd(rdfd), writefd(wrfd), bufr(store_size, store) { }
-
-#include "ringbufr.tcc"
-
-#endif // __IOPACKAGE_TCC_
+#error obsolete file
+// This file is currently obsolete. If your Makefile references it, your set of
+// source files is inconsistent.

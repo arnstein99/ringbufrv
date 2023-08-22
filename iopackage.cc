@@ -8,6 +8,10 @@ using namespace std::chrono;
 #include <iostream>
 #endif
 
+IOPackageBase::IOPackageBase(
+        int rdfd, int wrfd, size_t store_size, unsigned char* store)
+    : readfd(rdfd), writefd(wrfd), bufr(store_size, store) { }
+
 bool IOPackageBase::cycle(pollfd pfd[2])
 {
     pfd[0].events = 0;
@@ -140,7 +144,7 @@ bool IOPackageBase::cycle(pollfd pfd[2])
         return (bytes_read || bytes_write);
 }
 
-iopackage_stats IOPackageBase::report()
+iopackage_stats IOPackageBase::report() const
 {
     iopackage_stats stats;
     stats.bytes_copied = bytes_copied;

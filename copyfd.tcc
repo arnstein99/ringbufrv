@@ -116,6 +116,4 @@ void copyfd2(
     }
 }
 
-#include "iopackage.tcc"
-
 #endif // __FD_COPY_TCC_

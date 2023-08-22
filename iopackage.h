@@ -13,21 +13,18 @@ struct iopackage_stats
 };
 
 // For read and write errors
-class IOPackageException
+struct IOPackageException
 {
-public:
     IOPackageException(int ern, size_t bc) : errn(ern), byte_count(bc) {}
     int errn;
     size_t byte_count;
 };
-class IOPackageReadException : public IOPackageException
+struct IOPackageReadException : public IOPackageException
 {
-public:
     IOPackageReadException(int ern, size_t bc) : IOPackageException(ern, bc) {}
 };
-class IOPackageWriteException : public IOPackageException
+struct IOPackageWriteException : public IOPackageException
 {
-public:
     IOPackageWriteException(int ern, size_t bc) : IOPackageException(ern, bc) {}
 };
 
@@ -36,7 +33,7 @@ class IOPackageBase
 public:
     IOPackageBase(int rdfd, int wrfd, size_t store_size, unsigned char* store);
     bool cycle(pollfd pfd[2]); // Read and write
-    iopackage_stats report();
+    iopackage_stats report() const;
 
 private:
     int readfd;
