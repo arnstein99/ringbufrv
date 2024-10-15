@@ -11,11 +11,6 @@ using namespace std::chrono;
 #include <unistd.h>
 #include <sys/uio.h>
 
-#ifdef VERBOSE
-#include <iostream>
-#include <iomanip>
-#endif
-
 template<size_t STORE_SIZE>
 iopackage_stats copyfd(int readfd, int writefd)
 {
