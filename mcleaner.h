@@ -2,6 +2,7 @@
 #define __MCLEANER_H_
 
 #include <fcntl.h>
+#include <unistd.h>
 #include <memory>
 #include <semaphore>
 #include <sys/socket.h>
